@@ -1,0 +1,20 @@
+# Database configuration
+mysql_config.php
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# PHP cache
+.phpunit.cache/
+
+# Composer
+/vendor/
+composer.phar
+
+# Log files
+*.log
