@@ -42,9 +42,12 @@
                                     <span class="font-medium">Alles selecteren</span>
                                 </label>
                                 <?php foreach ($availableDates as $d): ?>
-                                    <label class="flex items-center text-sm">
-                                        <input type="checkbox" name="dates[]" value="<?php echo htmlspecialchars($d); ?>" class="date-cb mr-2">
-                                        <?php echo date('F j, Y', strtotime($d)); ?>
+                                    <label class="flex items-center justify-between text-sm">
+                                        <span>
+                                            <input type="checkbox" name="dates[]" value="<?php echo htmlspecialchars($d); ?>" class="date-cb mr-2">
+                                            <?php echo date('F j, Y', strtotime($d)); ?>
+                                        </span>
+                                        <span class="text-gray-400 text-xs"><?php echo $dateCounts[$d] ?? 0; ?> files</span>
                                     </label>
                                 <?php endforeach; ?>
                             <?php endif; ?>
@@ -65,8 +68,12 @@
                         <p class="text-gray-500">Nog geen toewijzingen</p>
                     <?php else: ?>
                         <?php foreach ($assignments as $username => $userAssignments): ?>
+                            <?php $userTotal = array_sum(array_column($userAssignments, 'file_count')); ?>
                             <div class="mb-4 border-b pb-4 last:border-b-0" data-user="<?php echo htmlspecialchars($username); ?>">
-                                <h4 class="font-semibold text-gray-800 mb-2"><?php echo htmlspecialchars($username); ?></h4>
+                                <h4 class="font-semibold text-gray-800 mb-2">
+                                    <?php echo htmlspecialchars($username); ?>
+                                    <span class="text-sm font-normal text-gray-500">(<?php echo $userTotal; ?> files totaal)</span>
+                                </h4>
                                 <div class="space-y-1">
                                     <?php foreach ($userAssignments as $a): ?>
                                         <div class="flex items-center justify-between text-sm bg-gray-50 rounded px-3 py-2" data-assignment-id="<?php echo $a['id']; ?>">

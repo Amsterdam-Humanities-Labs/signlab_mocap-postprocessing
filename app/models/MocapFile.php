@@ -53,6 +53,22 @@ class MocapFile {
         return $stmt->execute([$status, $id]);
     }
 
+    /**
+     * Get file count per capture date. Returns ['2026-03-18' => 398, ...].
+     */
+    public function getDateCounts(): array {
+        $sql = "SELECT SUBSTRING_INDEX(capture_id, '/', 1) AS capture_date, COUNT(*) AS cnt
+                FROM vicon_files WHERE {$this->baseFilter}
+                GROUP BY capture_date ORDER BY capture_date DESC";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute();
+        $result = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $result[$row['capture_date']] = (int)$row['cnt'];
+        }
+        return $result;
+    }
+
     // ─── Available dates ───
 
     public function getAvailableDates($status = 'unprocessed', ?array $allowedDates = null) {
