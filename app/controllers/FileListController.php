@@ -65,6 +65,16 @@ class FileListController {
         // Calculate pagination
         $totalPages = $totalFiles > 0 ? ceil($totalFiles / $limit) : 0;
 
+        // Collect all visible file IDs for activity lookup
+        $allFileIds = [];
+        foreach ($filesGroupedByDate as $files) {
+            foreach ($files as $f) {
+                $allFileIds[] = $f['id'];
+            }
+        }
+        $fileActivities = $this->mocapFileModel->getLatestActivity($allFileIds);
+        $downloadedFiles = $this->mocapFileModel->getDownloadedFileIds($allFileIds);
+
         // Pass to view
         $noAssignments = ($allowedDates !== null && empty($allowedDates));
 

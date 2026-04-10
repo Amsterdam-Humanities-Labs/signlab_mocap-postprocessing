@@ -131,7 +131,7 @@
                                         <?php endif; ?>
                                         <th class="pb-3">Status</th>
                                         <th class="pb-3">Review</th>
-                                        <th class="pb-3">Last Modified</th>
+                                        <th class="pb-3">Last Activity</th>
                                         <th class="pb-3">Actions</th>
                                     </tr>
                                 </thead>
@@ -153,8 +153,11 @@
                                             </td>
                                             <?php endif; ?>
                                             <td class="py-3">
+                                                <?php $isDownloaded = !empty($downloadedFiles[$file['id']]); ?>
                                                 <?php if ($file['is_pp'] == 1): ?>
                                                     <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">Processed</span>
+                                                <?php elseif ($isDownloaded): ?>
+                                                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Downloaded</span>
                                                 <?php else: ?>
                                                     <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Unprocessed</span>
                                                 <?php endif; ?>
@@ -177,7 +180,25 @@
                                                     <span class="text-gray-400 text-sm">-</span>
                                                 <?php endif; ?>
                                             </td>
-                                            <td class="py-3 text-gray-600 text-sm"><?php echo date('M j, Y H:i', strtotime($file['last_modified'])); ?></td>
+                                            <td class="py-3 text-gray-600 text-sm">
+                                                <?php
+                                                $activity = $fileActivities[$file['id']] ?? null;
+                                                if ($activity):
+                                                    $actionLabels = [
+                                                        'original' => 'downloaded',
+                                                        'processed' => 'downloaded',
+                                                        'bulk' => 'downloaded',
+                                                        'upload' => 'uploaded',
+                                                        'mark_processed' => 'processed',
+                                                    ];
+                                                    $actionLabel = $actionLabels[$activity['action']] ?? $activity['action'];
+                                                ?>
+                                                    <?php echo $actionLabel; ?> by <strong><?php echo htmlspecialchars($activity['username']); ?></strong><br>
+                                                    <span class="text-xs"><?php echo date('M j, Y H:i', strtotime($activity['downloaded_at'])); ?></span>
+                                                <?php else: ?>
+                                                    <span class="text-xs"><?php echo date('M j, Y H:i', strtotime($file['last_modified'])); ?></span>
+                                                <?php endif; ?>
+                                            </td>
                                             <td class="py-3">
                                                 <?php
                                                     $baseGlos = preg_replace('/\\.fbx$/i', '', $file['filename']);
@@ -194,6 +215,9 @@
                                                     <a href="https://avatar.signcollect.nl/blendAnims/compare.html?file=<?php echo urlencode($baseGlos); ?>"
                                                        target="_blank" class="text-purple-600 hover:text-purple-800 mr-2">Compare</a>
                                                     <a href="download.php?id=<?php echo $file['id']; ?>" class="text-blue-600 hover:text-blue-800">Download Original</a>
+                                                    <br>
+                                                    <button onclick="markProcessed(<?php echo $file['id']; ?>, this)"
+                                                            class="text-green-600 hover:text-green-800 text-sm mt-1">Process as correct animation</button>
                                                 <?php endif; ?>
                                                 <?php if ($previewUrl): ?>
                                                     <br>
@@ -250,6 +274,33 @@
     </div>
 
     <script>
+        function markProcessed(fileId, btn) {
+            if (!confirm('Mark this animation as correct and processed?')) return;
+            btn.disabled = true;
+            btn.textContent = 'Processing...';
+
+            fetch('mark-processed.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `id=${fileId}`
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert(data.message || 'Failed');
+                    btn.disabled = false;
+                    btn.textContent = 'Process as correct animation';
+                }
+            })
+            .catch(() => {
+                alert('Error marking as processed');
+                btn.disabled = false;
+                btn.textContent = 'Process as correct animation';
+            });
+        }
+
         function setReviewStatus(fileId, status) {
             const container = document.querySelector(`[data-file-id="${fileId}"]`);
             const buttons = container.querySelectorAll('.review-btn');
