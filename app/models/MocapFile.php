@@ -12,31 +12,6 @@ class MocapFile {
         $this->db = Database::getInstance()->getConnection();
     }
 
-    /**
-     * Build a date-filter clause from allowed dates.
-     * Returns empty string if $allowedDates is null (admin — no filter).
-     */
-    private function buildDateFilter(?array $allowedDates, string $alias = ''): string {
-        if ($allowedDates === null) {
-            return '';
-        }
-        $prefix = $alias ? "$alias." : '';
-        if (empty($allowedDates)) {
-            return " AND 1=0"; // no assignments → no results
-        }
-        $placeholders = implode(',', array_fill(0, count($allowedDates), '?'));
-        return " AND SUBSTRING_INDEX({$prefix}capture_id, '/', 1) IN ($placeholders)";
-    }
-
-    private function bindDateParams(\PDOStatement $stmt, ?array $allowedDates, int &$paramIndex): void {
-        if ($allowedDates === null || empty($allowedDates)) {
-            return;
-        }
-        foreach ($allowedDates as $date) {
-            $stmt->bindValue($paramIndex++, $date, PDO::PARAM_STR);
-        }
-    }
-
     public function getFileById($id) {
         $sql = "SELECT *, SUBSTRING_INDEX(capture_id, '/', 1) AS capture_date
                 FROM vicon_files WHERE id = ? AND {$this->baseFilter}";
