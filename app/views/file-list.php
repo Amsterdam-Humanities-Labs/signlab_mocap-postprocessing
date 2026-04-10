@@ -181,6 +181,8 @@
                                             <td class="py-3">
                                                 <?php
                                                     $baseGlos = preg_replace('/\\.fbx$/i', '', $file['filename']);
+                                                    $glbUrl = !empty($file['glb_path']) ? str_replace('/web/', '/', $file['glb_path']) : '';
+                                                    $previewUrl = $glbUrl ? '/animMIDI/babyloncc/?anim=' . urlencode($glbUrl) : '';
                                                 ?>
                                                 <?php if ($file['is_pp'] == 1): ?>
                                                     <a href="https://avatar.signcollect.nl/blendAnims/compare.html?file=<?php echo urlencode($file['filename']); ?>"
@@ -192,6 +194,10 @@
                                                     <a href="https://avatar.signcollect.nl/blendAnims/compare.html?file=<?php echo urlencode($baseGlos); ?>"
                                                        target="_blank" class="text-purple-600 hover:text-purple-800 mr-2">Compare</a>
                                                     <a href="download.php?id=<?php echo $file['id']; ?>" class="text-blue-600 hover:text-blue-800">Download Original</a>
+                                                <?php endif; ?>
+                                                <?php if ($previewUrl): ?>
+                                                    <br>
+                                                    <a href="<?php echo $previewUrl; ?>" target="_blank" class="text-orange-600 hover:text-orange-800 text-sm">Preview Animation</a>
                                                 <?php endif; ?>
                                             </td>
                                         </tr>
