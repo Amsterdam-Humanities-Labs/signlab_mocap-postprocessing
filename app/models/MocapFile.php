@@ -43,6 +43,12 @@ class MocapFile {
         return $stmt->execute([$processedFilename, $id]);
     }
 
+    public function markAsUnprocessed($id) {
+        $sql = "UPDATE vicon_files SET is_pp = 0, filename_pp = NULL, datetime_pp = NULL WHERE id = ?";
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute([$id]);
+    }
+
     public function updateReviewStatus($id, $status) {
         $validStatuses = ['pending', 'approved', 'rejected', 'needs_review'];
         if (!in_array($status, $validStatuses)) {
