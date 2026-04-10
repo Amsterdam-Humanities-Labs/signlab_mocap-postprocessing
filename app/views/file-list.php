@@ -155,11 +155,11 @@
                                             <td class="py-3">
                                                 <?php $isDownloaded = !empty($downloadedFiles[$file['id']]); ?>
                                                 <?php if ($file['is_pp'] == 1): ?>
-                                                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">Processed</span>
+                                                    <span class="status-badge inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">Processed</span>
                                                 <?php elseif ($isDownloaded): ?>
-                                                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Downloaded</span>
+                                                    <span class="status-badge inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Downloaded</span>
                                                 <?php else: ?>
-                                                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Unprocessed</span>
+                                                    <span class="status-badge inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Unprocessed</span>
                                                 <?php endif; ?>
                                             </td>
                                             <td class="py-3">
@@ -190,6 +190,7 @@
                                                         'bulk' => 'downloaded',
                                                         'upload' => 'uploaded',
                                                         'mark_processed' => 'processed',
+                                                        'mark_unprocessed' => 'reverted',
                                                     ];
                                                     $actionLabel = $actionLabels[$activity['action']] ?? $activity['action'];
                                                 ?>
@@ -215,10 +216,12 @@
                                                     <a href="https://avatar.signcollect.nl/blendAnims/compare.html?file=<?php echo urlencode($baseGlos); ?>"
                                                        target="_blank" class="text-purple-600 hover:text-purple-800 mr-2">Compare</a>
                                                     <a href="download.php?id=<?php echo $file['id']; ?>" class="text-blue-600 hover:text-blue-800">Download Original</a>
-                                                    <br>
-                                                    <button onclick="markProcessed(<?php echo $file['id']; ?>, this)"
-                                                            class="text-green-600 hover:text-green-800 text-sm mt-1">Process as correct animation</button>
                                                 <?php endif; ?>
+                                                <br>
+                                                <button onclick="toggleProcessed(<?php echo $file['id']; ?>, <?php echo $file['is_pp'] ? "'unprocess'" : "'process'"; ?>, this)"
+                                                        class="text-sm mt-1 <?php echo $file['is_pp'] ? 'text-yellow-600 hover:text-yellow-800' : 'text-green-600 hover:text-green-800'; ?>">
+                                                    <?php echo $file['is_pp'] ? 'Revert to unprocessed' : 'Process as correct animation'; ?>
+                                                </button>
                                                 <?php if ($previewUrl): ?>
                                                     <br>
                                                     <a href="<?php echo $previewUrl; ?>" target="_blank" class="text-orange-600 hover:text-orange-800 text-sm">Preview Animation</a>
@@ -274,30 +277,51 @@
     </div>
 
     <script>
-        function markProcessed(fileId, btn) {
-            if (!confirm('Mark this animation as correct and processed?')) return;
+        function toggleProcessed(fileId, action, btn) {
             btn.disabled = true;
-            btn.textContent = 'Processing...';
+            const origText = btn.textContent;
+            btn.textContent = '...';
 
             fetch('mark-processed.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `id=${fileId}`
+                body: `id=${fileId}&action=${action}`
             })
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
-                    location.reload();
+                    // Toggle button state inline
+                    if (data.status === 'processed') {
+                        btn.textContent = 'Revert to unprocessed';
+                        btn.className = 'text-sm mt-1 text-yellow-600 hover:text-yellow-800';
+                        btn.setAttribute('onclick', `toggleProcessed(${fileId}, 'unprocess', this)`);
+                    } else {
+                        btn.textContent = 'Process as correct animation';
+                        btn.className = 'text-sm mt-1 text-green-600 hover:text-green-800';
+                        btn.setAttribute('onclick', `toggleProcessed(${fileId}, 'process', this)`);
+                    }
+                    // Update status badge in same row
+                    const row = btn.closest('tr');
+                    const statusCell = row.querySelector('.status-badge');
+                    if (statusCell) {
+                        if (data.status === 'processed') {
+                            statusCell.className = 'status-badge inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800';
+                            statusCell.textContent = 'Processed';
+                        } else {
+                            statusCell.className = 'status-badge inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800';
+                            statusCell.textContent = 'Unprocessed';
+                        }
+                    }
                 } else {
                     alert(data.message || 'Failed');
-                    btn.disabled = false;
-                    btn.textContent = 'Process as correct animation';
+                    btn.textContent = origText;
                 }
+                btn.disabled = false;
             })
             .catch(() => {
-                alert('Error marking as processed');
+                alert('Error updating status');
+                btn.textContent = origText;
                 btn.disabled = false;
-                btn.textContent = 'Process as correct animation';
             });
         }
 
