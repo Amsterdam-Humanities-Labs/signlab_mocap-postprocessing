@@ -6,12 +6,12 @@
     <title>Motion Capture File Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 overflow-hidden h-screen flex flex-col">
+<body class="bg-gray-100 m-0">
     <?php require_once __DIR__ . '/partials/header.php'; ?>
 
-    <div class="flex flex-1 overflow-hidden">
+    <div id="appLayout" style="display: flex; flex-direction: row; height: calc(100vh - 64px); overflow: hidden;">
     <!-- Main content -->
-    <div id="mainContent" class="flex-1 overflow-y-auto px-4 py-4">
+    <div id="mainContent" style="flex: 1; overflow-y: auto; padding: 1rem;">
         <div class="mb-6 flex gap-4">
             <div class="bg-blue-100 px-4 py-2 rounded">
                 <span class="text-blue-800 font-semibold">Unprocessed: <?php echo $unprocessedCount; ?></span>
@@ -442,18 +442,18 @@
     </div><!-- end mainContent -->
 
     <!-- Resize handle -->
-    <div id="resizeHandle" class="hidden w-1.5 cursor-col-resize bg-gray-300 hover:bg-blue-400 active:bg-blue-500 flex-shrink-0"></div>
+    <div id="resizeHandle" style="display: none; width: 6px; cursor: col-resize; background: #d1d5db; flex-shrink: 0;"></div>
 
     <!-- Preview sidebar -->
-    <div id="previewSidebar" class="hidden flex-shrink-0 bg-white border-l border-gray-300 flex flex-col" style="width: 50%;">
-        <div class="flex items-center justify-between px-3 py-2 bg-gray-50 border-b">
-            <span id="previewTitle" class="text-sm font-medium text-gray-700 truncate"></span>
-            <button onclick="closePreview()" class="text-gray-500 hover:text-red-600 text-lg font-bold px-2" title="Close">&times;</button>
+    <div id="previewSidebar" style="display: none; width: 50%; flex-shrink: 0; flex-direction: column; background: #fff; border-left: 1px solid #d1d5db;">
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #f9fafb; border-bottom: 1px solid #e5e7eb;">
+            <span id="previewTitle" style="font-size: 14px; font-weight: 500; color: #374151; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+            <button onclick="closePreview()" style="color: #6b7280; font-size: 20px; font-weight: bold; padding: 0 8px; cursor: pointer; border: none; background: none;" title="Close">&times;</button>
         </div>
-        <iframe id="previewFrame" class="flex-1 w-full" frameborder="0"></iframe>
+        <iframe id="previewFrame" style="flex: 1; width: 100%; border: none;"></iframe>
     </div>
 
-    </div><!-- end flex container -->
+    </div><!-- end appLayout -->
 
     <script>
     // Preview sidebar
@@ -465,8 +465,8 @@
 
         frame.src = url;
         title.textContent = filename;
-        sidebar.classList.remove('hidden');
-        handle.classList.remove('hidden');
+        sidebar.style.display = 'flex';
+        handle.style.display = 'block';
     }
 
     function closePreview() {
@@ -474,8 +474,8 @@
         const handle = document.getElementById('resizeHandle');
         const frame = document.getElementById('previewFrame');
 
-        sidebar.classList.add('hidden');
-        handle.classList.add('hidden');
+        sidebar.style.display = 'none';
+        handle.style.display = 'none';
         frame.src = '';
     }
 
