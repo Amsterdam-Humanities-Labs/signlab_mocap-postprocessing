@@ -10,6 +10,7 @@ $headerIsAdmin = isAdmin($currentUser['username']);
             <a href="/menu.html" class="text-sm text-blue-600 hover:text-blue-800">Menu</a>
         </div>
         <div class="flex items-center gap-4">
+            <a href="stats.php" class="text-sm text-gray-600 hover:text-gray-800 font-medium">Statistieken</a>
             <?php if ($headerIsAdmin): ?>
                 <a href="delegate.php" class="text-sm text-purple-600 hover:text-purple-800 font-medium">Toewijzingen</a>
             <?php endif; ?>

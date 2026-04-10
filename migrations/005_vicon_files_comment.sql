@@ -1,0 +1,3 @@
+ALTER TABLE vicon_files
+    ADD COLUMN comment TEXT DEFAULT NULL,
+    ADD COLUMN comment_by VARCHAR(255) DEFAULT NULL;
