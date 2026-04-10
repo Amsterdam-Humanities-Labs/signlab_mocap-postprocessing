@@ -17,11 +17,11 @@ class UploadController {
         }
     }
     
-    public function showUploadForm() {
+    public function showUploadForm(array $currentUser = []) {
         require_once dirname(__DIR__) . '/views/upload-form.php';
     }
     
-    public function processUpload() {
+    public function processUpload(array $currentUser = []) {
         $results = ['success' => [], 'errors' => []];
         $allowOverwrite = isset($_POST['allow_overwrite']) && $_POST['allow_overwrite'] == '1';
         
