@@ -132,6 +132,7 @@
                                         <th class="pb-3">Status</th>
                                         <th class="pb-3">Review</th>
                                         <th class="pb-3">Last Activity</th>
+                                        <th class="pb-3">Comment</th>
                                         <th class="pb-3">Actions</th>
                                     </tr>
                                 </thead>
@@ -199,6 +200,21 @@
                                                 <?php else: ?>
                                                     <span class="text-xs"><?php echo date('M j, Y H:i', strtotime($file['last_modified'])); ?></span>
                                                 <?php endif; ?>
+                                            </td>
+                                            <td class="py-3">
+                                                <div class="comment-cell relative" data-file-id="<?php echo $file['id']; ?>">
+                                                    <?php $fileComment = $file['comment'] ?? ''; $commentBy = $file['comment_by'] ?? ''; ?>
+                                                    <div class="comment-display cursor-pointer text-sm text-gray-600 min-w-[120px] max-w-[200px] truncate hover:bg-gray-50 rounded px-1"
+                                                         onclick="editComment(<?php echo $file['id']; ?>, this)"
+                                                         title="<?php echo htmlspecialchars($fileComment); ?><?php echo $commentBy ? "\n— " . htmlspecialchars($commentBy) : ''; ?>">
+                                                        <?php echo $fileComment ? htmlspecialchars($fileComment) : '<span class=&quot;text-gray-300 italic&quot;>Add comment...</span>'; ?>
+                                                    </div>
+                                                    <textarea class="comment-edit hidden w-full text-sm border border-blue-300 rounded px-2 py-1 min-w-[150px]"
+                                                              rows="2"
+                                                              onblur="saveComment(<?php echo $file['id']; ?>, this)"
+                                                              onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();this.blur();}"
+                                                    ><?php echo htmlspecialchars($fileComment); ?></textarea>
+                                                </div>
                                             </td>
                                             <td class="py-3">
                                                 <?php
@@ -386,6 +402,38 @@
             } else {
                 window.location.href = 'download.php?bulk=' + fileIds.join(',');
             }
+        }
+        function editComment(fileId, displayEl) {
+            const cell = displayEl.closest('.comment-cell');
+            const textarea = cell.querySelector('.comment-edit');
+            displayEl.classList.add('hidden');
+            textarea.classList.remove('hidden');
+            textarea.focus();
+        }
+
+        function saveComment(fileId, textarea) {
+            const cell = textarea.closest('.comment-cell');
+            const display = cell.querySelector('.comment-display');
+            const comment = textarea.value.trim();
+
+            fetch('update-comment.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `id=${fileId}&comment=${encodeURIComponent(comment)}`
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    display.innerHTML = comment
+                        ? `<span>${comment.replace(/</g, '&lt;')}</span>`
+                        : '<span class="text-gray-300 italic">Add comment...</span>';
+                    display.title = comment + (data.comment_by ? '\n\u2014 ' + data.comment_by : '');
+                }
+            })
+            .catch(() => {});
+
+            textarea.classList.add('hidden');
+            display.classList.remove('hidden');
         }
     </script>
 </body>
