@@ -2,6 +2,8 @@
 namespace App\controllers;
 
 use App\models\MocapFile;
+use App\config\Database;
+use PDO;
 use ZipArchive;
 
 class DownloadController {
@@ -13,7 +15,13 @@ class DownloadController {
         $this->mocapFileModel = new MocapFile();
     }
 
-    public function downloadSingle($id, $type = 'original') {
+    private function logDownload(string $username, int $fileId, string $filename, string $type): void {
+        $db = Database::getInstance()->getConnection();
+        $stmt = $db->prepare("INSERT INTO download_logs (username, file_id, filename, download_type) VALUES (?, ?, ?, ?)");
+        $stmt->execute([$username, $fileId, $filename, $type]);
+    }
+
+    public function downloadSingle($id, $type = 'original', array $currentUser = []) {
         $file = $this->mocapFileModel->getFileById($id);
 
         if (!$file) {
@@ -54,6 +62,10 @@ class DownloadController {
             $downloadFilename = $file['filename'];
         }
 
+        if (!empty($currentUser['username'])) {
+            $this->logDownload($currentUser['username'], (int)$file['id'], $downloadFilename, $type);
+        }
+
         header('Content-Type: application/octet-stream');
         header('Content-Disposition: attachment; filename="' . $downloadFilename . '"');
         header('Content-Length: ' . filesize($localPath));
@@ -66,7 +78,7 @@ class DownloadController {
         exit;
     }
 
-    public function downloadBulk($fileIds) {
+    public function downloadBulk($fileIds, array $currentUser = []) {
         $files = $this->mocapFileModel->getFilesByIds($fileIds);
 
         if (empty($files)) {
@@ -105,6 +117,12 @@ class DownloadController {
         }
 
         $zip->close();
+
+        if (!empty($currentUser['username'])) {
+            foreach ($files as $file) {
+                $this->logDownload($currentUser['username'], (int)$file['id'], $file['filename'], 'bulk');
+            }
+        }
 
         header('Content-Type: application/zip');
         header('Content-Disposition: attachment; filename="mocap_files_' . date('Y-m-d_H-i-s') . '.zip"');

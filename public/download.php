@@ -10,10 +10,10 @@ $controller = new DownloadController();
 
 if (isset($_GET['id'])) {
     $type = $_GET['type'] ?? 'original';
-    $controller->downloadSingle($_GET['id'], $type);
+    $controller->downloadSingle($_GET['id'], $type, $currentUser);
 } elseif (isset($_GET['bulk'])) {
     $fileIds = explode(',', $_GET['bulk']);
-    $controller->downloadBulk($fileIds);
+    $controller->downloadBulk($fileIds, $currentUser);
 } else {
     header('Location: index.php');
     exit;
