@@ -1,6 +1,7 @@
 RewriteEngine On
 
-# Redirect all requests to public directory
+# Redirect all requests to public directory (except babyloncc/dist)
+RewriteCond %{REQUEST_URI} !^/animMIDI/babyloncc/dist/
 RewriteCond %{REQUEST_URI} !^/public/
 RewriteRule ^(.*)$ /public/$1 [L]
 
