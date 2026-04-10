@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compare Animations - BabylonJS</title>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a2e; }
+        canvas { width: 100%; height: 100%; display: block; }
+        #ui { position: absolute; top: 10px; left: 10px; z-index: 10; display: flex; gap: 8px; }
+        #ui button {
+            background: rgba(255,255,255,0.9); border: none; border-radius: 6px;
+            padding: 6px 14px; font-size: 13px; cursor: pointer; font-family: sans-serif;
+        }
+        #ui button:hover { background: #fff; }
+        #labels { position: absolute; top: 50px; left: 0; right: 0; z-index: 10; display: flex; justify-content: center; gap: 120px; pointer-events: none; }
+        .label { background: rgba(0,0,0,0.6); color: #fff; padding: 4px 14px; border-radius: 4px; font-size: 13px; font-family: sans-serif; }
+        .label-original { border-left: 3px solid #3b82f6; }
+        .label-processed { border-left: 3px solid #10b981; }
+        #status { position: absolute; bottom: 10px; left: 10px; z-index: 10; color: #aaa; font-size: 12px; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <canvas id="renderCanvas"></canvas>
+    <div id="ui">
+        <button id="playPauseBtn" onclick="togglePlay()">Pause</button>
+        <button onclick="frameCamera()">Center (J)</button>
+        <input type="range" id="frameSlider" min="0" max="100" value="0" step="0.1" style="width:250px" oninput="scrubFrame(this.value)">
+        <span id="frameLabel" style="color:#fff;font-size:12px;font-family:monospace;min-width:80px">0 / 0</span>
+    </div>
+    <div id="labels">
+        <span class="label label-original">Original</span>
+        <span class="label label-processed">Post-Processed</span>
+    </div>
+    <div id="status">Loading...</div>
+
+    <script>
+    var AVATAR_URL = "/animMIDI/babyloncc/dist/";
+    var AVATAR_FILE = "Palmer_optimized_ktx2.glb";
+    var EXCLUDED = ["cc_base_eyeocclusion","cc_base_tear_ducts","cc_base_tearline",
+        "chin_curtain_sparse","male_bushy","mustache_horseshoe","stubble_neck",
+        "cc_base_eye_primitive1","cc_base_eye_primitive3"];
+
+    var params = new URLSearchParams(window.location.search);
+    var file = params.get("file"); // e.g. M20260126_1880_260319_1
+    var originalUrl = file ? "/gebarenoverleg_media/fbx/CC/" + file + ".glb" : null;
+    var processedUrl = file ? "/gebarenoverleg_media/fbx/post_processed/" + file + ".glb" : null;
+
+    var canvas = document.getElementById("renderCanvas");
+    var engine = new BABYLON.Engine(canvas, true);
+    engine.setHardwareScalingLevel(1.5);
+    var scene = new BABYLON.Scene(engine);
+    scene.createDefaultCameraOrLight(true, true, true);
+    var cam = scene.activeCamera;
+    if (cam) { cam.minZ = 0.001; cam.lowerRadiusLimit = 0.1; }
+    window.addEventListener("resize", function() { engine.resize(); });
+
+    var allGroups = [];
+
+    function setStatus(msg) { document.getElementById("status").textContent = msg; }
+
+    // Load avatar instance at a given X offset, returns { root, boneMap, nodeMap, skeleton }
+    async function loadAvatarInstance(xOffset) {
+        var result = await BABYLON.SceneLoader.ImportMeshAsync("", AVATAR_URL, AVATAR_FILE, scene);
+        var avatarRoot = result.transformNodes[0] || result.meshes.find(function(m){return !m.parent;}) || new BABYLON.TransformNode("avatarRoot", scene);
+        if (avatarRoot.scaling && avatarRoot.scaling.x === 0.01) avatarRoot.scaling.set(1,1,1);
+
+        // Parent ALL imported top-level nodes under a wrapper for positioning
+        var wrapper = new BABYLON.TransformNode("wrapper_" + xOffset, scene);
+        wrapper.position.x = xOffset;
+
+        result.transformNodes.forEach(function(n) {
+            if (!n.parent) n.parent = wrapper;
+        });
+        result.meshes.forEach(function(m) {
+            if (!m.parent) m.parent = wrapper;
+        });
+
+        result.meshes.forEach(function(m) {
+            var lower = m.name.toLowerCase();
+            if (EXCLUDED.some(function(ex){return lower.includes(ex.toLowerCase());})) { m.setEnabled(false); return; }
+            m.alwaysSelectAsActiveMesh = true;
+            var mat = m.material;
+            if (!mat) return;
+            var n = (m.name + " " + mat.name).toLowerCase();
+            if (n.includes("hair")) { mat.backFaceCulling = true; m.renderingGroupId = 0; mat.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND; }
+            else if (n.includes("eyelash")) { mat.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND; }
+            else if (n.includes("scalp")) { m.renderingGroupId = 0; m.alphaIndex = 0; }
+            else { mat.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_OPAQUE; }
+        });
+
+        // Build maps from this avatar's skeleton only (last added skeleton)
+        var boneMap = new Map();
+        var nodeMap = new Map();
+        // Get the skeleton that was just imported (newest one)
+        var skel = scene.skeletons[scene.skeletons.length - 1];
+
+        if (skel) {
+            skel.bones.forEach(function(bone) {
+                if (!bone.name) return;
+                boneMap.set(bone.name, bone);
+                var linked = bone.getTransformNode();
+                if (linked && linked.name) {
+                    nodeMap.set(linked.name, linked);
+                    if (linked.name !== bone.name) boneMap.set(linked.name, bone);
+                }
+            });
+        }
+
+        // Also add all transform nodes from this import
+        result.transformNodes.forEach(function(n) { if (n.name) nodeMap.set(n.name, n); });
+
+        console.log("[Avatar@" + xOffset + "] meshes:" + result.meshes.length + " bones:" + boneMap.size);
+        return { root: avatarRoot, wrapper: wrapper, boneMap: boneMap, nodeMap: nodeMap, skeleton: skel };
+    }
+
+    function detectPositionScale(srcGroup, skel) {
+        if (!skel) return 1;
+        var pelvisBone = skel.bones.find(function(b){ return b.name === "pelvis"; });
+        if (!pelvisBone) return 1;
+        var restZ = Math.abs(pelvisBone.getRestMatrix().getTranslation().z);
+        if (restZ < 0.01) return 1;
+        for (var i = 0; i < srcGroup.targetedAnimations.length; i++) {
+            var ta = srcGroup.targetedAnimations[i];
+            if (ta.target && ta.target.name === "pelvis" && ta.animation.targetProperty === "position") {
+                var keys = ta.animation.getKeys();
+                if (keys.length > 0) {
+                    var animZ = Math.abs(keys[0].value.z);
+                    if (animZ > 0.001) {
+                        var scale = restZ / animZ;
+                        // If scale is near 1 (0.8-1.2), animation is already in cm — no scaling needed
+                        if (scale > 0.8 && scale < 1.2) {
+                            console.log("[Scale] Animation already in cm (scale=" + scale.toFixed(3) + "), skipping");
+                            return 1;
+                        }
+                        console.log("[Scale] Detected m->cm scale: " + scale.toFixed(2));
+                        return scale;
+                    }
+                }
+            }
+        }
+        return 1;
+    }
+
+    // Measure rotation range of a bone in an animation group
+    function measureRotationRange(srcGroup, boneName) {
+        for (var i = 0; i < srcGroup.targetedAnimations.length; i++) {
+            var ta = srcGroup.targetedAnimations[i];
+            if (ta.target && ta.target.name === boneName && ta.animation.targetProperty === "rotationQuaternion") {
+                var keys = ta.animation.getKeys();
+                if (keys.length < 2) continue;
+                var maxAngle = 0;
+                var ref = keys[0].value;
+                for (var k = 1; k < keys.length; k++) {
+                    var q = keys[k].value;
+                    var dot = Math.abs(ref.x*q.x + ref.y*q.y + ref.z*q.z + ref.w*q.w);
+                    dot = Math.min(1, dot);
+                    var angle = 2 * Math.acos(dot) * 180 / Math.PI;
+                    if (angle > maxAngle) maxAngle = angle;
+                }
+                return maxAngle;
+            }
+        }
+        return 0;
+    }
+
+    // Build per-bone rotation amplification map
+    function buildPerBoneAmplify(ccGroup, ppGroup) {
+        var map = {};
+        if (!ccGroup || !ppGroup) return map;
+        // Get all bone names that have rotation in PP
+        var ppBones = {};
+        ppGroup.targetedAnimations.forEach(function(ta) {
+            if (ta.animation.targetProperty === "rotationQuaternion" && ta.target && ta.target.name) {
+                ppBones[ta.target.name] = true;
+            }
+        });
+        for (var name in ppBones) {
+            var ccRange = measureRotationRange(ccGroup, name);
+            var ppRange = measureRotationRange(ppGroup, name);
+            if (ccRange > 3 && ppRange > 1) {
+                var factor = ccRange / ppRange;
+                // Cap per bone: don't amplify more than 5x, and bones already close stay at 1
+                factor = Math.max(1, Math.min(5, factor));
+                if (factor > 1.1) map[name] = factor;
+            }
+        }
+        console.log("[Compare] Per-bone amplify sample:", Object.keys(map).slice(0, 10).map(function(k) { return k + ":" + map[k].toFixed(1); }).join(", "));
+        return map;
+    }
+
+    // Amplify a quaternion rotation relative to a rest quaternion
+    function amplifyQuat(rest, q, factor) {
+        // delta = rest^-1 * q
+        var ri = new BABYLON.Quaternion(-rest.x, -rest.y, -rest.z, rest.w); // inverse
+        var delta = ri.multiply(q);
+        // amplify: slerp(identity, delta, factor)
+        var identity = BABYLON.Quaternion.Identity();
+        var amplified = BABYLON.Quaternion.Slerp(identity, delta, factor);
+        // result = rest * amplified
+        return rest.multiply(amplified);
+    }
+
+    function retarget(srcGroup, boneMap, nodeMap, skel, perBoneAmplify) {
+        perBoneAmplify = perBoneAmplify || {};
+        var dst = new BABYLON.AnimationGroup(srcGroup.name + "_retarget", scene);
+        var posScale = detectPositionScale(srcGroup, skel);
+        var matched = 0, miss = 0;
+
+        srcGroup.targetedAnimations.forEach(function(ta) {
+            var anim = ta.animation, tgt = ta.target;
+            var name = tgt && tgt.name || "";
+            var cls = tgt && tgt.getClassName ? tgt.getClassName() : "";
+            var newTarget = null;
+
+            if (cls === "Bone") {
+                var bone = boneMap.get(tgt.name) || null;
+                newTarget = bone && bone.getTransformNode ? (bone.getTransformNode() || bone) : bone;
+            } else if (cls === "MorphTarget") {
+                return;
+            } else if (name) {
+                var bone = boneMap.get(name) || null;
+                newTarget = bone && bone.getTransformNode ? (bone.getTransformNode() || bone) : (nodeMap.get(name) || null);
+            }
+
+            if (newTarget) {
+                matched++;
+                var boneAmplify = perBoneAmplify[name] || 1;
+                if (anim.targetProperty === "position" && posScale !== 1) {
+                    var sa = anim.clone();
+                    sa.setKeys(sa.getKeys().map(function(key) {
+                        var v = key.value;
+                        return (v && v.x !== undefined) ? {frame:key.frame, value:new BABYLON.Vector3(v.x*posScale,v.y*posScale,v.z*posScale)} : key;
+                    }));
+                    dst.addTargetedAnimation(sa, newTarget);
+                } else if (anim.targetProperty === "rotationQuaternion" && boneAmplify > 1) {
+                    var sa = anim.clone();
+                    var keys = sa.getKeys();
+                    var restQ = keys[0].value.clone();
+                    sa.setKeys(keys.map(function(key) {
+                        return {frame: key.frame, value: amplifyQuat(restQ, key.value, boneAmplify)};
+                    }));
+                    dst.addTargetedAnimation(sa, newTarget);
+                } else {
+                    dst.addTargetedAnimation(anim, newTarget);
+                }
+            } else {
+                miss++;
+            }
+        });
+
+        var ampCount = Object.keys(perBoneAmplify).length;
+        console.log("[Retarget] matched=" + matched + " miss=" + miss + " posScale=" + posScale.toFixed(1) + " amplifiedBones=" + ampCount);
+        dst.loopAnimation = true;
+        return dst;
+    }
+
+    // Load raw animation (no retarget) to measure rotation range
+    async function loadRawAnimGroup(url) {
+        var i = url.lastIndexOf("/");
+        var container;
+        try { container = await BABYLON.SceneLoader.LoadAssetContainerAsync(url.substring(0,i+1), url.substring(i+1), scene); }
+        catch(e) { return null; }
+        var groups = container.animationGroups || [];
+        var result = groups.length ? groups[0] : null;
+        // Don't dispose container yet — we need the animation data
+        return { group: result, container: container };
+    }
+
+    async function loadAnimForAvatar(url, avatarData, perBoneAmplify) {
+        perBoneAmplify = perBoneAmplify || {};
+        var i = url.lastIndexOf("/");
+        var container;
+        try { container = await BABYLON.SceneLoader.LoadAssetContainerAsync(url.substring(0,i+1), url.substring(i+1), scene); }
+        catch(e) { console.error("[Load] Failed:", url, e); return null; }
+        var groups = container.animationGroups || [];
+        if (!groups.length) { container.dispose(); return null; }
+        var retargeted = [];
+        groups.forEach(function(g) {
+            retargeted.push(retarget(g, avatarData.boneMap, avatarData.nodeMap, avatarData.skeleton, perBoneAmplify));
+        });
+        container.dispose();
+        return retargeted;
+    }
+
+    var isPlaying = true;
+
+    function playAll() { allGroups.forEach(function(g) { g.play(true); }); isPlaying = true; document.getElementById("playPauseBtn").textContent = "Pause"; }
+
+    function pauseAll() { allGroups.forEach(function(g) { g.pause(); }); isPlaying = false; document.getElementById("playPauseBtn").textContent = "Play"; }
+
+    function togglePlay() { if (isPlaying) pauseAll(); else playAll(); }
+
+    function scrubFrame(val) {
+        var pct = parseFloat(val) / 100;
+        allGroups.forEach(function(g) {
+            var frame = g.from + (g.to - g.from) * pct;
+            g.goToFrame(frame);
+        });
+        // Update label with frame number from first group
+        if (allGroups.length) {
+            var g = allGroups[0];
+            var frame = g.from + (g.to - g.from) * pct;
+            document.getElementById("frameLabel").textContent = Math.round(frame) + " / " + Math.round(g.to);
+        }
+        if (isPlaying) pauseAll();
+    }
+
+    // Update slider during playback
+    function updateSlider() {
+        if (!isPlaying || !allGroups.length) return;
+        var g = allGroups[0];
+        if (!g.animatables || !g.animatables[0]) return;
+        var frame = g.animatables[0].masterFrame;
+        var pct = (frame - g.from) / (g.to - g.from) * 100;
+        document.getElementById("frameSlider").value = pct;
+        document.getElementById("frameLabel").textContent = Math.round(frame) + " / " + Math.round(g.to);
+    }
+
+    // Auto-detect facing direction and flip wrapper if avatar faces away from camera
+    function fixFacing(avatarData) {
+        var skel = avatarData.skeleton;
+        if (!skel) return;
+        var head = skel.bones.find(function(b) { return b.name === "head"; });
+        var pelvis = skel.bones.find(function(b) { return b.name === "pelvis"; });
+        if (!head || !pelvis) return;
+        var hz = head.getTransformNode().getAbsolutePosition().z;
+        var pz = pelvis.getTransformNode().getAbsolutePosition().z;
+        // Camera at alpha=-PI/2 looks from positive Z. Avatar should face positive Z (head.z > pelvis.z)
+        if (hz < pz - 0.01) {
+            // Facing away — rotate wrapper 180
+            avatarData.wrapper.rotation.y = Math.PI;
+            console.log("[Compare] Flipped " + avatarData.wrapper.name + " to face camera");
+        }
+    }
+
+    function frameCamera() {
+        if (!cam || !scene.skeletons.length) return;
+        // Use first skeleton for framing
+        var skel = scene.skeletons[0];
+        var pelvis = skel.bones.find(function(b){return b.name==="pelvis";});
+        var head = skel.bones.find(function(b){return b.name==="head";});
+        if (!pelvis || !head) return;
+        var pelvisY = pelvis.getTransformNode().getAbsolutePosition().y;
+        var headY = head.getTransformNode().getAbsolutePosition().y;
+        var targetY = pelvisY + (headY - pelvisY) * 0.65;
+        cam.setTarget(new BABYLON.Vector3(0, targetY, 0));
+        cam.radius = (headY - pelvisY) * 5;
+        cam.alpha = -Math.PI / 2;
+        cam.beta = Math.PI / 2.2;
+        cam.minZ = 0.01;
+    }
+
+    window.addEventListener("keydown", function(e) {
+        if (e.key==="j"||e.key==="J") frameCamera();
+    });
+
+    (async function() {
+        if (!file) { setStatus("Missing ?file= parameter"); return; }
+
+        setStatus("Loading avatars...");
+
+        // Load two avatar instances side by side
+        var leftAvatar = await loadAvatarInstance(-0.75);  // Original on left
+        var rightAvatar = await loadAvatarInstance(0.75);   // Processed on right
+
+        frameCamera();
+
+        // Measure rotation ranges to auto-compute amplification
+        setStatus("Analyzing animations...");
+        var rawCC = await loadRawAnimGroup(originalUrl);
+        var rawPP = await loadRawAnimGroup(processedUrl);
+
+        var perBoneAmplify = {};
+        if (rawCC && rawCC.group && rawPP && rawPP.group) {
+            perBoneAmplify = buildPerBoneAmplify(rawCC.group, rawPP.group);
+        }
+        if (rawCC && rawCC.container) rawCC.container.dispose();
+        if (rawPP && rawPP.container) rawPP.container.dispose();
+
+        // Load animations: original as-is, PP with per-bone amplification
+        setStatus("Loading original animation...");
+        var leftGroups = await loadAnimForAvatar(originalUrl, leftAvatar, {});
+
+        setStatus("Loading post-processed animation...");
+        var rightGroups = await loadAnimForAvatar(processedUrl, rightAvatar, perBoneAmplify);
+
+        if (leftGroups) allGroups = allGroups.concat(leftGroups);
+        if (rightGroups) allGroups = allGroups.concat(rightGroups);
+
+        var status = [];
+        if (leftGroups) status.push("Original: OK");
+        else status.push("Original: not found");
+        if (rightGroups) status.push("Processed: OK");
+        else status.push("Processed: not found");
+
+        setStatus(status.join(" | ") + " — Playing");
+        playAll();
+
+        // After one frame, check facing and fix
+        engine.runRenderLoop(function(){ scene.render(); updateSlider(); });
+        await new Promise(function(r) { setTimeout(r, 100); });
+        fixFacing(leftAvatar);
+        fixFacing(rightAvatar);
+        frameCamera();
+    })();
+    </script>
+</body>
+</html>

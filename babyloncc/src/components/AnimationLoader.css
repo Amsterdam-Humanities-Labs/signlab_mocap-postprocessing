@@ -1,0 +1,156 @@
+/* Animation Loader UI */
+.anim-loader-toggle {
+  position: fixed;
+  left: 12px;
+  top: 12px;
+  z-index: 9999;
+  padding: 10px 16px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 14px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: system-ui, -apple-system, sans-serif;
+  transition: background 0.2s;
+}
+
+.anim-loader-toggle:hover {
+  background: rgba(0, 0, 0, 0.85);
+}
+
+.anim-loader-panel {
+  position: fixed;
+  left: 12px;
+  top: 60px;
+  z-index: 9998;
+  background: rgba(20, 20, 20, 0.95);
+  color: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 320px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.anim-loader-panel.hidden {
+  display: none;
+}
+
+.anim-loader-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: #fff;
+}
+
+.anim-drop-zone {
+  margin-bottom: 16px;
+}
+
+.anim-drop-label {
+  font-size: 12px;
+  color: #aaa;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.anim-drop-area {
+  border: 2px dashed #555;
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  background: rgba(40, 40, 40, 0.6);
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.anim-drop-area:hover {
+  border-color: #777;
+  background: rgba(50, 50, 50, 0.7);
+}
+
+.anim-drop-area.drag-over {
+  border-color: #4a9eff;
+  background: rgba(74, 158, 255, 0.1);
+}
+
+.anim-drop-area.loaded {
+  border-color: #4ade80;
+  background: rgba(74, 222, 128, 0.1);
+}
+
+.anim-drop-text {
+  font-size: 13px;
+  color: #bbb;
+}
+
+.anim-drop-filename {
+  font-size: 12px;
+  color: #4ade80;
+  margin-top: 4px;
+  word-break: break-all;
+}
+
+.anim-drop-input {
+  display: none;
+}
+
+.anim-controls {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #333;
+}
+
+.anim-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.anim-btn-primary {
+  background: #4a9eff;
+  color: #fff;
+}
+
+.anim-btn-primary:hover {
+  background: #3a8eef;
+}
+
+.anim-btn-primary:disabled {
+  background: #555;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.anim-btn-secondary {
+  background: #555;
+  color: #fff;
+}
+
+.anim-btn-secondary:hover {
+  background: #666;
+}
+
+.anim-status {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #888;
+  text-align: center;
+}
+
+.anim-status.success {
+  color: #4ade80;
+}
+
+.anim-status.error {
+  color: #ef4444;
+}
