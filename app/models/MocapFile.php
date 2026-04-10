@@ -6,599 +6,672 @@ use PDO;
 
 class MocapFile {
     private $db;
-    
+    private $baseFilter = "subdirectory = 'unreal/CC'";
+
     public function __construct() {
         $this->db = Database::getInstance()->getConnection();
     }
-    
-    public function getAllFiles($filterProcessed = null) {
-        $sql = "SELECT id, glos, filename, datetime, is_pp, filename_pp 
-                FROM mocap_files";
-        
-        if ($filterProcessed !== null) {
-            $sql .= " WHERE is_pp = :is_pp";
+
+    /**
+     * Build a date-filter clause from allowed dates.
+     * Returns empty string if $allowedDates is null (admin — no filter).
+     */
+    private function buildDateFilter(?array $allowedDates, string $alias = ''): string {
+        if ($allowedDates === null) {
+            return '';
         }
-        
-        $sql .= " ORDER BY datetime DESC";
-        
-        $stmt = $this->db->prepare($sql);
-        
-        if ($filterProcessed !== null) {
-            $stmt->bindParam(':is_pp', $filterProcessed, PDO::PARAM_INT);
+        $prefix = $alias ? "$alias." : '';
+        if (empty($allowedDates)) {
+            return " AND 1=0"; // no assignments → no results
         }
-        
-        $stmt->execute();
-        return $stmt->fetchAll();
+        $placeholders = implode(',', array_fill(0, count($allowedDates), '?'));
+        return " AND SUBSTRING_INDEX({$prefix}capture_id, '/', 1) IN ($placeholders)";
     }
-    
-    public function getUnprocessedFiles() {
-        return $this->getAllFiles(0);
+
+    private function bindDateParams(\PDOStatement $stmt, ?array $allowedDates, int &$paramIndex): void {
+        if ($allowedDates === null || empty($allowedDates)) {
+            return;
+        }
+        foreach ($allowedDates as $date) {
+            $stmt->bindValue($paramIndex++, $date, PDO::PARAM_STR);
+        }
     }
-    
-    public function getProcessedFiles() {
-        return $this->getAllFiles(1);
-    }
-    
+
     public function getFileById($id) {
-        $sql = "SELECT * FROM mocap_files WHERE id = :id";
+        $sql = "SELECT *, SUBSTRING_INDEX(capture_id, '/', 1) AS capture_date
+                FROM vicon_files WHERE id = ? AND {$this->baseFilter}";
         $stmt = $this->db->prepare($sql);
-        $stmt->bindParam(':id', $id, PDO::PARAM_INT);
-        $stmt->execute();
+        $stmt->execute([$id]);
         return $stmt->fetch();
     }
-    
+
     public function getFilesByIds($ids) {
         $placeholders = str_repeat('?,', count($ids) - 1) . '?';
-        $sql = "SELECT * FROM mocap_files WHERE id IN ($placeholders)";
+        $sql = "SELECT *, SUBSTRING_INDEX(capture_id, '/', 1) AS capture_date
+                FROM vicon_files WHERE id IN ($placeholders) AND {$this->baseFilter}";
         $stmt = $this->db->prepare($sql);
         $stmt->execute($ids);
         return $stmt->fetchAll();
     }
-    
-    public function markAsProcessed($id, $processedFilename) {
-        $sql = "UPDATE mocap_files 
-                SET is_pp = 1, filename_pp = :filename_pp, datetime_pp = NOW() 
-                WHERE id = :id";
-        $stmt = $this->db->prepare($sql);
-        $stmt->bindParam(':id', $id, PDO::PARAM_INT);
-        $stmt->bindParam(':filename_pp', $processedFilename, PDO::PARAM_STR);
-        return $stmt->execute();
-    }
-    
+
     public function findByFilename($filename) {
-        $sql = "SELECT * FROM mocap_files WHERE filename = :filename";
+        $sql = "SELECT *, SUBSTRING_INDEX(capture_id, '/', 1) AS capture_date
+                FROM vicon_files WHERE filename = ? AND {$this->baseFilter}";
         $stmt = $this->db->prepare($sql);
-        $stmt->bindParam(':filename', $filename, PDO::PARAM_STR);
-        $stmt->execute();
+        $stmt->execute([$filename]);
         return $stmt->fetch();
     }
-    
-    public function getFilesGroupedByDate() {
-        $sql = "SELECT *, DATE(datetime) as date_only 
-                FROM mocap_files 
-                ORDER BY datetime DESC";
+
+    public function markAsProcessed($id, $processedFilename) {
+        $sql = "UPDATE vicon_files SET is_pp = 1, filename_pp = ?, datetime_pp = NOW() WHERE id = ?";
         $stmt = $this->db->prepare($sql);
-        $stmt->execute();
-        
-        $results = $stmt->fetchAll();
-        $grouped = [];
-        
-        foreach ($results as $row) {
-            $date = $row['date_only'];
-            if (!isset($grouped[$date])) {
-                $grouped[$date] = [];
-            }
-            $grouped[$date][] = $row;
-        }
-        
-        return $grouped;
+        return $stmt->execute([$processedFilename, $id]);
     }
-    
-    public function getUnprocessedFilesGroupedByDate($limit = null, $page = 1) {
+
+    public function updateReviewStatus($id, $status) {
+        $validStatuses = ['pending', 'approved', 'rejected', 'needs_review'];
+        if (!in_array($status, $validStatuses)) {
+            return false;
+        }
+        $sql = "UPDATE vicon_files SET review_status = ? WHERE id = ?";
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute([$status, $id]);
+    }
+
+    // ─── Available dates ───
+
+    public function getAvailableDates($status = 'unprocessed', ?array $allowedDates = null) {
+        $sql = "SELECT DISTINCT SUBSTRING_INDEX(capture_id, '/', 1) AS capture_date
+                FROM vicon_files WHERE {$this->baseFilter}";
+
+        $params = [];
+        if ($status === 'processed') {
+            $sql .= " AND is_pp = 1";
+        } elseif ($status === 'unprocessed') {
+            $sql .= " AND is_pp = 0";
+        }
+
+        if ($allowedDates !== null) {
+            if (empty($allowedDates)) {
+                return [];
+            }
+            $placeholders = implode(',', array_fill(0, count($allowedDates), '?'));
+            $sql .= " AND SUBSTRING_INDEX(capture_id, '/', 1) IN ($placeholders)";
+            $params = $allowedDates;
+        }
+
+        $sql .= " ORDER BY capture_date DESC";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_COLUMN);
+    }
+
+    // ─── Unprocessed files ───
+
+    public function getUnprocessedFilesGroupedByDate($limit = null, $page = 1, $searchTerm = '', ?array $allowedDates = null) {
         $offset = $limit ? ($page - 1) * $limit : 0;
-        
-        // Get only the latest version of each glos, but exclude glosses that have ANY processed version
-        // For files with 00:00:00 time, use the highest take number from filename pattern _YYMMDD_N_
-        $sql = "SELECT f1.*, DATE(f1.datetime) as date_only 
-                FROM mocap_files f1
+
+        // Deduplicate: latest take per base glos (strip _N suffix)
+        // Base glos: M20260204_3146_260217_1.fbx → M20260204_3146_260217
+        // Exclude base glosses that already have a processed version
+        $sql = "SELECT f1.*, SUBSTRING_INDEX(f1.capture_id, '/', 1) AS capture_date
+                FROM vicon_files f1
                 INNER JOIN (
-                    SELECT glos,
-                           MAX(
-                               CASE 
-                                   WHEN HOUR(datetime) = 0 AND MINUTE(datetime) = 0 AND SECOND(datetime) = 0 AND filename REGEXP '_[0-9]{6}_[0-9]+_' THEN
-                                       CONCAT(DATE(datetime), '_', 
-                                              LPAD(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(filename, '_', 3), '_', -1) AS UNSIGNED), 10, '0'))
-                                   WHEN HOUR(datetime) = 0 AND MINUTE(datetime) = 0 AND SECOND(datetime) = 0 AND filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN
-                                       CONCAT(DATE(datetime), '_', 
-                                              LPAD(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(filename, '.', 1), '_', -1) AS UNSIGNED), 10, '0'))
-                                   ELSE 
-                                       CONCAT(datetime, '_0000000000')
-                               END
-                           ) as sort_key
-                    FROM mocap_files 
-                    WHERE is_pp = 0
-                    GROUP BY glos
-                ) f2 ON f1.glos = f2.glos
-                WHERE f1.is_pp = 0
-                AND f1.glos NOT IN (
-                    SELECT DISTINCT glos 
-                    FROM mocap_files 
-                    WHERE is_pp = 1
-                )
-                AND CONCAT(
-                    CASE 
-                        WHEN HOUR(f1.datetime) = 0 AND MINUTE(f1.datetime) = 0 AND SECOND(f1.datetime) = 0 AND f1.filename REGEXP '_[0-9]{6}_[0-9]+_' THEN
-                            CONCAT(DATE(f1.datetime), '_', 
-                                   LPAD(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(f1.filename, '_', 3), '_', -1) AS UNSIGNED), 10, '0'))
-                        WHEN HOUR(f1.datetime) = 0 AND MINUTE(f1.datetime) = 0 AND SECOND(f1.datetime) = 0 AND f1.filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN
-                            CONCAT(DATE(f1.datetime), '_', 
-                                   LPAD(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(f1.filename, '.', 1), '_', -1) AS UNSIGNED), 10, '0'))
-                        ELSE 
-                            CONCAT(f1.datetime, '_0000000000')
+                    SELECT
+                        CASE
+                            WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
+                            ELSE REPLACE(filename, '.fbx', '')
+                        END AS base_glos,
+                        MAX(
+                            CASE
+                                WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN
+                                    LPAD(CAST(SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', -1) AS UNSIGNED), 10, '0')
+                                ELSE '0000000000'
+                            END
+                        ) AS max_take
+                    FROM vicon_files
+                    WHERE {$this->baseFilter} AND is_pp = 0
+                    GROUP BY base_glos
+                ) f2 ON (
+                    CASE
+                        WHEN f1.filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(f1.filename, '.fbx', ''), '_', 3)
+                        ELSE REPLACE(f1.filename, '.fbx', '')
                     END
-                ) = f2.sort_key
-                ORDER BY f1.datetime DESC";
-        
-        if ($limit) {
-            $sql .= " LIMIT :limit OFFSET :offset";
-        }
-        
-        $stmt = $this->db->prepare($sql);
-        
-        if ($limit) {
-            $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
-            $stmt->bindParam(':offset', $offset, PDO::PARAM_INT);
-        }
-        
-        $stmt->execute();
-        
-        $results = $stmt->fetchAll();
-        $grouped = [];
-        
-        foreach ($results as $row) {
-            $date = $row['date_only'];
-            if (!isset($grouped[$date])) {
-                $grouped[$date] = [];
-            }
-            $grouped[$date][] = $row;
-        }
-        
-        return $grouped;
-    }
-    
-    public function getUnprocessedFilesWithDuplicates($limit = null, $page = 1) {
-        $offset = $limit ? ($page - 1) * $limit : 0;
-        
-        $sql = "SELECT *, DATE(datetime) as date_only 
-                FROM mocap_files 
-                WHERE is_pp = 0
-                ORDER BY datetime DESC";
-        
-        if ($limit) {
-            $sql .= " LIMIT :limit OFFSET :offset";
-        }
-        
-        $stmt = $this->db->prepare($sql);
-        
-        if ($limit) {
-            $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
-            $stmt->bindParam(':offset', $offset, PDO::PARAM_INT);
-        }
-        
-        $stmt->execute();
-        
-        $results = $stmt->fetchAll();
-        $grouped = [];
-        
-        foreach ($results as $row) {
-            $date = $row['date_only'];
-            if (!isset($grouped[$date])) {
-                $grouped[$date] = [];
-            }
-            $grouped[$date][] = $row;
-        }
-        
-        return $grouped;
-    }
-    
-    public function getUnprocessedFilesCount() {
-        // Count only unique glosses (latest version of each) but exclude glosses that have ANY processed version
-        $sql = "SELECT COUNT(DISTINCT glos) as total 
-                FROM mocap_files 
-                WHERE is_pp = 0 
-                AND glos NOT IN (
-                    SELECT DISTINCT glos 
-                    FROM mocap_files 
-                    WHERE is_pp = 1
+                ) = f2.base_glos
+                AND (
+                    CASE
+                        WHEN f1.filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN
+                            LPAD(CAST(SUBSTRING_INDEX(REPLACE(f1.filename, '.fbx', ''), '_', -1) AS UNSIGNED), 10, '0')
+                        ELSE '0000000000'
+                    END
+                ) = f2.max_take
+                WHERE f1.{$this->baseFilter} AND f1.is_pp = 0
+                AND (
+                    CASE
+                        WHEN f1.filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(f1.filename, '.fbx', ''), '_', 3)
+                        ELSE REPLACE(f1.filename, '.fbx', '')
+                    END
+                ) NOT IN (
+                    SELECT DISTINCT
+                        CASE
+                            WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
+                            ELSE REPLACE(filename, '.fbx', '')
+                        END
+                    FROM vicon_files
+                    WHERE {$this->baseFilter} AND is_pp = 1
                 )";
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute();
-        $result = $stmt->fetch();
-        return $result['total'];
-    }
-    
-    public function getAvailableDates($status = 'unprocessed') {
-        if ($status === 'all') {
-            $sql = "SELECT DISTINCT DATE(datetime) as date_only 
-                    FROM mocap_files 
-                    ORDER BY date_only DESC";
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute();
-            return $stmt->fetchAll(PDO::FETCH_COLUMN);
-        } else {
-            $isProcessed = $status === 'processed' ? 1 : 0;
-            $sql = "SELECT DISTINCT DATE(datetime) as date_only 
-                    FROM mocap_files 
-                    WHERE is_pp = :is_pp
-                    ORDER BY date_only DESC";
-            $stmt = $this->db->prepare($sql);
-            $stmt->bindParam(':is_pp', $isProcessed, PDO::PARAM_INT);
-            $stmt->execute();
-            return $stmt->fetchAll(PDO::FETCH_COLUMN);
-        }
-    }
-    
-    public function getUnprocessedFilesByDate($date, $limit = null, $page = 1) {
-        $offset = $limit ? ($page - 1) * $limit : 0;
-        
-        // Get only the latest version of each glos for the specific date, but exclude glosses that have ANY processed version
-        // For files with 00:00:00 time, use the highest take number from filename
-        $sql = "SELECT f1.*, DATE(f1.datetime) as date_only 
-                FROM mocap_files f1
-                INNER JOIN (
-                    SELECT glos,
-                           MAX(
-                               CASE 
-                                   WHEN HOUR(datetime) = 0 AND MINUTE(datetime) = 0 AND SECOND(datetime) = 0 AND filename REGEXP '_[0-9]{6}_[0-9]+_' THEN
-                                       CONCAT(DATE(datetime), '_', 
-                                              LPAD(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(filename, '_', 3), '_', -1) AS UNSIGNED), 10, '0'))
-                                   WHEN HOUR(datetime) = 0 AND MINUTE(datetime) = 0 AND SECOND(datetime) = 0 AND filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN
-                                       CONCAT(DATE(datetime), '_', 
-                                              LPAD(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(filename, '.', 1), '_', -1) AS UNSIGNED), 10, '0'))
-                                   ELSE 
-                                       CONCAT(datetime, '_0000000000')
-                               END
-                           ) as sort_key
-                    FROM mocap_files 
-                    WHERE is_pp = 0 AND DATE(datetime) = :date
-                    GROUP BY glos
-                ) f2 ON f1.glos = f2.glos
-                WHERE f1.is_pp = 0 AND DATE(f1.datetime) = :date2
-                AND f1.glos NOT IN (
-                    SELECT DISTINCT glos 
-                    FROM mocap_files 
-                    WHERE is_pp = 1
-                )
-                AND CONCAT(
-                    CASE 
-                        WHEN HOUR(f1.datetime) = 0 AND MINUTE(f1.datetime) = 0 AND SECOND(f1.datetime) = 0 AND f1.filename REGEXP '_[0-9]{6}_[0-9]+_' THEN
-                            CONCAT(DATE(f1.datetime), '_', 
-                                   LPAD(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(f1.filename, '_', 3), '_', -1) AS UNSIGNED), 10, '0'))
-                        WHEN HOUR(f1.datetime) = 0 AND MINUTE(f1.datetime) = 0 AND SECOND(f1.datetime) = 0 AND f1.filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN
-                            CONCAT(DATE(f1.datetime), '_', 
-                                   LPAD(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(f1.filename, '.', 1), '_', -1) AS UNSIGNED), 10, '0'))
-                        ELSE 
-                            CONCAT(f1.datetime, '_0000000000')
-                    END
-                ) = f2.sort_key
-                ORDER BY f1.datetime DESC";
-        
-        if ($limit) {
-            $sql .= " LIMIT :limit OFFSET :offset";
-        }
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->bindParam(':date', $date, PDO::PARAM_STR);
-        $stmt->bindParam(':date2', $date, PDO::PARAM_STR);
-        
-        if ($limit) {
-            $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
-            $stmt->bindParam(':offset', $offset, PDO::PARAM_INT);
-        }
-        
-        $stmt->execute();
-        
-        $results = $stmt->fetchAll();
-        $grouped = [];
-        
-        foreach ($results as $row) {
-            $dateKey = $row['date_only'];
-            if (!isset($grouped[$dateKey])) {
-                $grouped[$dateKey] = [];
+
+        $params = [];
+
+        if ($allowedDates !== null) {
+            if (empty($allowedDates)) {
+                return [];
             }
-            $grouped[$dateKey][] = $row;
+            $ph = implode(',', array_fill(0, count($allowedDates), '?'));
+            $sql .= " AND SUBSTRING_INDEX(f1.capture_id, '/', 1) IN ($ph)";
+            $params = array_merge($params, $allowedDates);
         }
-        
-        return $grouped;
+
+        if (!empty($searchTerm)) {
+            $sql .= " AND f1.filename LIKE ?";
+            $params[] = '%' . $searchTerm . '%';
+        }
+
+        $sql .= " ORDER BY f1.last_modified DESC";
+
+        if ($limit) {
+            $sql .= " LIMIT ? OFFSET ?";
+            $params[] = $limit;
+            $params[] = $offset;
+        }
+
+        $stmt = $this->db->prepare($sql);
+
+        // Bind params with correct types
+        foreach ($params as $i => $val) {
+            if (is_int($val)) {
+                $stmt->bindValue($i + 1, $val, PDO::PARAM_INT);
+            } else {
+                $stmt->bindValue($i + 1, $val, PDO::PARAM_STR);
+            }
+        }
+
+        $stmt->execute();
+        return $this->groupByDate($stmt->fetchAll(), 'capture_date');
     }
-    
-    public function getUnprocessedFilesCountByDate($date) {
-        // Count only unique glosses (latest version of each) for specific date but exclude glosses that have ANY processed version
-        $sql = "SELECT COUNT(DISTINCT glos) as total 
-                FROM mocap_files 
-                WHERE is_pp = 0 AND DATE(datetime) = :date
-                AND glos NOT IN (
-                    SELECT DISTINCT glos 
-                    FROM mocap_files 
-                    WHERE is_pp = 1
+
+    public function getUnprocessedFilesCount($searchTerm = '', ?array $allowedDates = null) {
+        $sql = "SELECT COUNT(DISTINCT
+                    CASE
+                        WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
+                        ELSE REPLACE(filename, '.fbx', '')
+                    END
+                ) AS total
+                FROM vicon_files
+                WHERE {$this->baseFilter} AND is_pp = 0
+                AND (
+                    CASE
+                        WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
+                        ELSE REPLACE(filename, '.fbx', '')
+                    END
+                ) NOT IN (
+                    SELECT DISTINCT
+                        CASE
+                            WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
+                            ELSE REPLACE(filename, '.fbx', '')
+                        END
+                    FROM vicon_files
+                    WHERE {$this->baseFilter} AND is_pp = 1
                 )";
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->bindParam(':date', $date, PDO::PARAM_STR);
-        $stmt->execute();
-        $result = $stmt->fetch();
-        return $result['total'];
-    }
-    
-    public function getProcessedFilesGroupedByDate($limit = null, $page = 1) {
-        $offset = $limit ? ($page - 1) * $limit : 0;
-        
-        $sql = "SELECT *, DATE(datetime) as date_only 
-                FROM mocap_files 
-                WHERE is_pp = 1
-                ORDER BY datetime DESC";
-        
-        if ($limit) {
-            $sql .= " LIMIT :limit OFFSET :offset";
-        }
-        
-        $stmt = $this->db->prepare($sql);
-        
-        if ($limit) {
-            $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
-            $stmt->bindParam(':offset', $offset, PDO::PARAM_INT);
-        }
-        
-        $stmt->execute();
-        
-        $results = $stmt->fetchAll();
-        $grouped = [];
-        
-        foreach ($results as $row) {
-            $date = $row['date_only'];
-            if (!isset($grouped[$date])) {
-                $grouped[$date] = [];
+
+        $params = [];
+
+        if ($allowedDates !== null) {
+            if (empty($allowedDates)) {
+                return 0;
             }
+            $ph = implode(',', array_fill(0, count($allowedDates), '?'));
+            $sql .= " AND SUBSTRING_INDEX(capture_id, '/', 1) IN ($ph)";
+            $params = $allowedDates;
+        }
+
+        if (!empty($searchTerm)) {
+            $sql .= " AND filename LIKE ?";
+            $params[] = '%' . $searchTerm . '%';
+        }
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetch()['total'];
+    }
+
+    // ─── Unprocessed by specific date ───
+
+    public function getUnprocessedFilesByDate($date, $limit = null, $page = 1, $searchTerm = '') {
+        $offset = $limit ? ($page - 1) * $limit : 0;
+
+        $sql = "SELECT f1.*, SUBSTRING_INDEX(f1.capture_id, '/', 1) AS capture_date
+                FROM vicon_files f1
+                INNER JOIN (
+                    SELECT
+                        CASE
+                            WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
+                            ELSE REPLACE(filename, '.fbx', '')
+                        END AS base_glos,
+                        MAX(
+                            CASE
+                                WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN
+                                    LPAD(CAST(SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', -1) AS UNSIGNED), 10, '0')
+                                ELSE '0000000000'
+                            END
+                        ) AS max_take
+                    FROM vicon_files
+                    WHERE {$this->baseFilter} AND is_pp = 0
+                    AND SUBSTRING_INDEX(capture_id, '/', 1) = ?
+                    GROUP BY base_glos
+                ) f2 ON (
+                    CASE
+                        WHEN f1.filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(f1.filename, '.fbx', ''), '_', 3)
+                        ELSE REPLACE(f1.filename, '.fbx', '')
+                    END
+                ) = f2.base_glos
+                AND (
+                    CASE
+                        WHEN f1.filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN
+                            LPAD(CAST(SUBSTRING_INDEX(REPLACE(f1.filename, '.fbx', ''), '_', -1) AS UNSIGNED), 10, '0')
+                        ELSE '0000000000'
+                    END
+                ) = f2.max_take
+                WHERE f1.{$this->baseFilter} AND f1.is_pp = 0
+                AND SUBSTRING_INDEX(f1.capture_id, '/', 1) = ?
+                AND (
+                    CASE
+                        WHEN f1.filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(f1.filename, '.fbx', ''), '_', 3)
+                        ELSE REPLACE(f1.filename, '.fbx', '')
+                    END
+                ) NOT IN (
+                    SELECT DISTINCT
+                        CASE
+                            WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
+                            ELSE REPLACE(filename, '.fbx', '')
+                        END
+                    FROM vicon_files
+                    WHERE {$this->baseFilter} AND is_pp = 1
+                )";
+
+        $params = [$date, $date];
+
+        if (!empty($searchTerm)) {
+            $sql .= " AND f1.filename LIKE ?";
+            $params[] = '%' . $searchTerm . '%';
+        }
+
+        $sql .= " ORDER BY f1.last_modified DESC";
+
+        if ($limit) {
+            $sql .= " LIMIT ? OFFSET ?";
+            $params[] = $limit;
+            $params[] = $offset;
+        }
+
+        $stmt = $this->db->prepare($sql);
+        foreach ($params as $i => $val) {
+            $stmt->bindValue($i + 1, $val, is_int($val) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $stmt->execute();
+        return $this->groupByDate($stmt->fetchAll(), 'capture_date');
+    }
+
+    public function getUnprocessedFilesCountByDate($date, $searchTerm = '') {
+        $sql = "SELECT COUNT(DISTINCT
+                    CASE
+                        WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
+                        ELSE REPLACE(filename, '.fbx', '')
+                    END
+                ) AS total
+                FROM vicon_files
+                WHERE {$this->baseFilter} AND is_pp = 0
+                AND SUBSTRING_INDEX(capture_id, '/', 1) = ?
+                AND (
+                    CASE
+                        WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
+                        ELSE REPLACE(filename, '.fbx', '')
+                    END
+                ) NOT IN (
+                    SELECT DISTINCT
+                        CASE
+                            WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
+                            ELSE REPLACE(filename, '.fbx', '')
+                        END
+                    FROM vicon_files
+                    WHERE {$this->baseFilter} AND is_pp = 1
+                )";
+
+        $params = [$date];
+
+        if (!empty($searchTerm)) {
+            $sql .= " AND filename LIKE ?";
+            $params[] = '%' . $searchTerm . '%';
+        }
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetch()['total'];
+    }
+
+    // ─── Processed files ───
+
+    public function getProcessedFilesGroupedByDate($limit = null, $page = 1, $searchTerm = '', $reviewStatus = 'all', ?array $allowedDates = null) {
+        $offset = $limit ? ($page - 1) * $limit : 0;
+
+        $sql = "SELECT *, SUBSTRING_INDEX(capture_id, '/', 1) AS capture_date
+                FROM vicon_files
+                WHERE {$this->baseFilter} AND is_pp = 1";
+
+        $params = [];
+
+        if ($allowedDates !== null) {
+            if (empty($allowedDates)) {
+                return [];
+            }
+            $ph = implode(',', array_fill(0, count($allowedDates), '?'));
+            $sql .= " AND SUBSTRING_INDEX(capture_id, '/', 1) IN ($ph)";
+            $params = array_merge($params, $allowedDates);
+        }
+
+        if (!empty($searchTerm)) {
+            $sql .= " AND filename LIKE ?";
+            $params[] = '%' . $searchTerm . '%';
+        }
+
+        if ($reviewStatus !== 'all') {
+            $sql .= " AND review_status = ?";
+            $params[] = $reviewStatus;
+        }
+
+        $sql .= " ORDER BY last_modified DESC";
+
+        if ($limit) {
+            $sql .= " LIMIT ? OFFSET ?";
+            $params[] = $limit;
+            $params[] = $offset;
+        }
+
+        $stmt = $this->db->prepare($sql);
+        foreach ($params as $i => $val) {
+            $stmt->bindValue($i + 1, $val, is_int($val) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $stmt->execute();
+        return $this->groupByDate($stmt->fetchAll(), 'capture_date');
+    }
+
+    public function getProcessedFilesByDate($date, $limit = null, $page = 1, $searchTerm = '') {
+        $offset = $limit ? ($page - 1) * $limit : 0;
+
+        $sql = "SELECT *, SUBSTRING_INDEX(capture_id, '/', 1) AS capture_date
+                FROM vicon_files
+                WHERE {$this->baseFilter} AND is_pp = 1
+                AND SUBSTRING_INDEX(capture_id, '/', 1) = ?";
+
+        $params = [$date];
+
+        if (!empty($searchTerm)) {
+            $sql .= " AND filename LIKE ?";
+            $params[] = '%' . $searchTerm . '%';
+        }
+
+        $sql .= " ORDER BY last_modified DESC";
+
+        if ($limit) {
+            $sql .= " LIMIT ? OFFSET ?";
+            $params[] = $limit;
+            $params[] = $offset;
+        }
+
+        $stmt = $this->db->prepare($sql);
+        foreach ($params as $i => $val) {
+            $stmt->bindValue($i + 1, $val, is_int($val) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $stmt->execute();
+        return $this->groupByDate($stmt->fetchAll(), 'capture_date');
+    }
+
+    public function getProcessedFilesCount($searchTerm = '', $reviewStatus = 'all', ?array $allowedDates = null) {
+        $sql = "SELECT COUNT(*) AS total FROM vicon_files WHERE {$this->baseFilter} AND is_pp = 1";
+
+        $params = [];
+
+        if ($allowedDates !== null) {
+            if (empty($allowedDates)) {
+                return 0;
+            }
+            $ph = implode(',', array_fill(0, count($allowedDates), '?'));
+            $sql .= " AND SUBSTRING_INDEX(capture_id, '/', 1) IN ($ph)";
+            $params = array_merge($params, $allowedDates);
+        }
+
+        if (!empty($searchTerm)) {
+            $sql .= " AND filename LIKE ?";
+            $params[] = '%' . $searchTerm . '%';
+        }
+
+        if ($reviewStatus !== 'all') {
+            $sql .= " AND review_status = ?";
+            $params[] = $reviewStatus;
+        }
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetch()['total'];
+    }
+
+    public function getProcessedFilesCountByDate($date, $searchTerm = '') {
+        $sql = "SELECT COUNT(*) AS total FROM vicon_files
+                WHERE {$this->baseFilter} AND is_pp = 1
+                AND SUBSTRING_INDEX(capture_id, '/', 1) = ?";
+
+        $params = [$date];
+
+        if (!empty($searchTerm)) {
+            $sql .= " AND filename LIKE ?";
+            $params[] = '%' . $searchTerm . '%';
+        }
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetch()['total'];
+    }
+
+    // ─── All files ───
+
+    public function getAllFilesGroupedByDate($limit = null, $page = 1, $searchTerm = '', ?array $allowedDates = null) {
+        $offset = $limit ? ($page - 1) * $limit : 0;
+
+        $sql = "SELECT f1.*, SUBSTRING_INDEX(f1.capture_id, '/', 1) AS capture_date
+                FROM vicon_files f1
+                INNER JOIN (
+                    SELECT
+                        CASE
+                            WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
+                            ELSE REPLACE(filename, '.fbx', '')
+                        END AS base_glos,
+                        MAX(
+                            CASE
+                                WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN
+                                    LPAD(CAST(SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', -1) AS UNSIGNED), 10, '0')
+                                ELSE '0000000000'
+                            END
+                        ) AS max_take
+                    FROM vicon_files
+                    WHERE {$this->baseFilter}
+                    GROUP BY base_glos
+                ) f2 ON (
+                    CASE
+                        WHEN f1.filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(f1.filename, '.fbx', ''), '_', 3)
+                        ELSE REPLACE(f1.filename, '.fbx', '')
+                    END
+                ) = f2.base_glos
+                AND (
+                    CASE
+                        WHEN f1.filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN
+                            LPAD(CAST(SUBSTRING_INDEX(REPLACE(f1.filename, '.fbx', ''), '_', -1) AS UNSIGNED), 10, '0')
+                        ELSE '0000000000'
+                    END
+                ) = f2.max_take
+                WHERE f1.{$this->baseFilter}";
+
+        $params = [];
+
+        if ($allowedDates !== null) {
+            if (empty($allowedDates)) {
+                return [];
+            }
+            $ph = implode(',', array_fill(0, count($allowedDates), '?'));
+            $sql .= " AND SUBSTRING_INDEX(f1.capture_id, '/', 1) IN ($ph)";
+            $params = array_merge($params, $allowedDates);
+        }
+
+        if (!empty($searchTerm)) {
+            $sql .= " AND f1.filename LIKE ?";
+            $params[] = '%' . $searchTerm . '%';
+        }
+
+        $sql .= " ORDER BY f1.last_modified DESC";
+
+        if ($limit) {
+            $sql .= " LIMIT ? OFFSET ?";
+            $params[] = $limit;
+            $params[] = $offset;
+        }
+
+        $stmt = $this->db->prepare($sql);
+        foreach ($params as $i => $val) {
+            $stmt->bindValue($i + 1, $val, is_int($val) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $stmt->execute();
+        return $this->groupByDate($stmt->fetchAll(), 'capture_date');
+    }
+
+    public function getAllFilesByDate($date, $limit = null, $page = 1, $searchTerm = '') {
+        $offset = $limit ? ($page - 1) * $limit : 0;
+
+        $sql = "SELECT f1.*, SUBSTRING_INDEX(f1.capture_id, '/', 1) AS capture_date
+                FROM vicon_files f1
+                INNER JOIN (
+                    SELECT
+                        CASE
+                            WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
+                            ELSE REPLACE(filename, '.fbx', '')
+                        END AS base_glos,
+                        MAX(
+                            CASE
+                                WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN
+                                    LPAD(CAST(SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', -1) AS UNSIGNED), 10, '0')
+                                ELSE '0000000000'
+                            END
+                        ) AS max_take
+                    FROM vicon_files
+                    WHERE {$this->baseFilter}
+                    AND SUBSTRING_INDEX(capture_id, '/', 1) = ?
+                    GROUP BY base_glos
+                ) f2 ON (
+                    CASE
+                        WHEN f1.filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(f1.filename, '.fbx', ''), '_', 3)
+                        ELSE REPLACE(f1.filename, '.fbx', '')
+                    END
+                ) = f2.base_glos
+                AND (
+                    CASE
+                        WHEN f1.filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN
+                            LPAD(CAST(SUBSTRING_INDEX(REPLACE(f1.filename, '.fbx', ''), '_', -1) AS UNSIGNED), 10, '0')
+                        ELSE '0000000000'
+                    END
+                ) = f2.max_take
+                WHERE f1.{$this->baseFilter}
+                AND SUBSTRING_INDEX(f1.capture_id, '/', 1) = ?";
+
+        $params = [$date, $date];
+
+        if (!empty($searchTerm)) {
+            $sql .= " AND f1.filename LIKE ?";
+            $params[] = '%' . $searchTerm . '%';
+        }
+
+        $sql .= " ORDER BY f1.last_modified DESC";
+
+        if ($limit) {
+            $sql .= " LIMIT ? OFFSET ?";
+            $params[] = $limit;
+            $params[] = $offset;
+        }
+
+        $stmt = $this->db->prepare($sql);
+        foreach ($params as $i => $val) {
+            $stmt->bindValue($i + 1, $val, is_int($val) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $stmt->execute();
+        return $this->groupByDate($stmt->fetchAll(), 'capture_date');
+    }
+
+    public function getAllFilesCount($searchTerm = '', ?array $allowedDates = null) {
+        $sql = "SELECT COUNT(DISTINCT
+                    CASE
+                        WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
+                        ELSE REPLACE(filename, '.fbx', '')
+                    END
+                ) AS total FROM vicon_files WHERE {$this->baseFilter}";
+
+        $params = [];
+
+        if ($allowedDates !== null) {
+            if (empty($allowedDates)) {
+                return 0;
+            }
+            $ph = implode(',', array_fill(0, count($allowedDates), '?'));
+            $sql .= " AND SUBSTRING_INDEX(capture_id, '/', 1) IN ($ph)";
+            $params = array_merge($params, $allowedDates);
+        }
+
+        if (!empty($searchTerm)) {
+            $sql .= " AND filename LIKE ?";
+            $params[] = '%' . $searchTerm . '%';
+        }
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetch()['total'];
+    }
+
+    public function getAllFilesCountByDate($date, $searchTerm = '') {
+        $sql = "SELECT COUNT(DISTINCT
+                    CASE
+                        WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
+                        ELSE REPLACE(filename, '.fbx', '')
+                    END
+                ) AS total FROM vicon_files
+                WHERE {$this->baseFilter}
+                AND SUBSTRING_INDEX(capture_id, '/', 1) = ?";
+
+        $params = [$date];
+
+        if (!empty($searchTerm)) {
+            $sql .= " AND filename LIKE ?";
+            $params[] = '%' . $searchTerm . '%';
+        }
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetch()['total'];
+    }
+
+    // ─── Helpers ───
+
+    private function groupByDate(array $results, string $dateField): array {
+        $grouped = [];
+        foreach ($results as $row) {
+            $date = $row[$dateField];
             $grouped[$date][] = $row;
         }
-        
         return $grouped;
-    }
-    
-    public function getProcessedFilesByDate($date, $limit = null, $page = 1) {
-        $offset = $limit ? ($page - 1) * $limit : 0;
-        
-        $sql = "SELECT *, DATE(datetime) as date_only 
-                FROM mocap_files 
-                WHERE is_pp = 1 AND DATE(datetime) = :date
-                ORDER BY datetime DESC";
-        
-        if ($limit) {
-            $sql .= " LIMIT :limit OFFSET :offset";
-        }
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->bindParam(':date', $date, PDO::PARAM_STR);
-        
-        if ($limit) {
-            $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
-            $stmt->bindParam(':offset', $offset, PDO::PARAM_INT);
-        }
-        
-        $stmt->execute();
-        
-        $results = $stmt->fetchAll();
-        $grouped = [];
-        
-        foreach ($results as $row) {
-            $dateKey = $row['date_only'];
-            if (!isset($grouped[$dateKey])) {
-                $grouped[$dateKey] = [];
-            }
-            $grouped[$dateKey][] = $row;
-        }
-        
-        return $grouped;
-    }
-    
-    public function getProcessedFilesCount() {
-        $sql = "SELECT COUNT(*) as total FROM mocap_files WHERE is_pp = 1";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute();
-        $result = $stmt->fetch();
-        return $result['total'];
-    }
-    
-    public function getProcessedFilesCountByDate($date) {
-        $sql = "SELECT COUNT(*) as total FROM mocap_files WHERE is_pp = 1 AND DATE(datetime) = :date";
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->bindParam(':date', $date, PDO::PARAM_STR);
-        $stmt->execute();
-        $result = $stmt->fetch();
-        return $result['total'];
-    }
-    
-    public function getAllFilesGroupedByDate($limit = null, $page = 1) {
-        $offset = $limit ? ($page - 1) * $limit : 0;
-        
-        // Get the latest version of each glos (processed or unprocessed)
-        $sql = "SELECT f1.*, DATE(f1.datetime) as date_only 
-                FROM mocap_files f1
-                INNER JOIN (
-                    SELECT glos,
-                           MAX(
-                               CASE 
-                                   WHEN HOUR(datetime) = 0 AND MINUTE(datetime) = 0 AND SECOND(datetime) = 0 AND filename REGEXP '_[0-9]{6}_[0-9]+_' THEN
-                                       CONCAT(DATE(datetime), '_', 
-                                              LPAD(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(filename, '_', 3), '_', -1) AS UNSIGNED), 10, '0'))
-                                   WHEN HOUR(datetime) = 0 AND MINUTE(datetime) = 0 AND SECOND(datetime) = 0 AND filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN
-                                       CONCAT(DATE(datetime), '_', 
-                                              LPAD(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(filename, '.', 1), '_', -1) AS UNSIGNED), 10, '0'))
-                                   ELSE 
-                                       CONCAT(datetime, '_0000000000')
-                               END
-                           ) as sort_key
-                    FROM mocap_files 
-                    GROUP BY glos
-                ) f2 ON f1.glos = f2.glos
-                WHERE CONCAT(
-                    CASE 
-                        WHEN HOUR(f1.datetime) = 0 AND MINUTE(f1.datetime) = 0 AND SECOND(f1.datetime) = 0 AND f1.filename REGEXP '_[0-9]{6}_[0-9]+_' THEN
-                            CONCAT(DATE(f1.datetime), '_', 
-                                   LPAD(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(f1.filename, '_', 3), '_', -1) AS UNSIGNED), 10, '0'))
-                        WHEN HOUR(f1.datetime) = 0 AND MINUTE(f1.datetime) = 0 AND SECOND(f1.datetime) = 0 AND f1.filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN
-                            CONCAT(DATE(f1.datetime), '_', 
-                                   LPAD(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(f1.filename, '.', 1), '_', -1) AS UNSIGNED), 10, '0'))
-                        ELSE 
-                            CONCAT(f1.datetime, '_0000000000')
-                    END
-                ) = f2.sort_key
-                ORDER BY f1.datetime DESC";
-        
-        if ($limit) {
-            $sql .= " LIMIT :limit OFFSET :offset";
-        }
-        
-        $stmt = $this->db->prepare($sql);
-        
-        if ($limit) {
-            $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
-            $stmt->bindParam(':offset', $offset, PDO::PARAM_INT);
-        }
-        
-        $stmt->execute();
-        
-        $results = $stmt->fetchAll();
-        $grouped = [];
-        
-        foreach ($results as $row) {
-            $date = $row['date_only'];
-            if (!isset($grouped[$date])) {
-                $grouped[$date] = [];
-            }
-            $grouped[$date][] = $row;
-        }
-        
-        return $grouped;
-    }
-    
-    public function getAllFilesByDate($date, $limit = null, $page = 1) {
-        $offset = $limit ? ($page - 1) * $limit : 0;
-        
-        // Get the latest version of each glos for the specific date (processed or unprocessed)
-        $sql = "SELECT f1.*, DATE(f1.datetime) as date_only 
-                FROM mocap_files f1
-                INNER JOIN (
-                    SELECT glos,
-                           MAX(
-                               CASE 
-                                   WHEN HOUR(datetime) = 0 AND MINUTE(datetime) = 0 AND SECOND(datetime) = 0 AND filename REGEXP '_[0-9]{6}_[0-9]+_' THEN
-                                       CONCAT(DATE(datetime), '_', 
-                                              LPAD(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(filename, '_', 3), '_', -1) AS UNSIGNED), 10, '0'))
-                                   WHEN HOUR(datetime) = 0 AND MINUTE(datetime) = 0 AND SECOND(datetime) = 0 AND filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN
-                                       CONCAT(DATE(datetime), '_', 
-                                              LPAD(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(filename, '.', 1), '_', -1) AS UNSIGNED), 10, '0'))
-                                   ELSE 
-                                       CONCAT(datetime, '_0000000000')
-                               END
-                           ) as sort_key
-                    FROM mocap_files 
-                    WHERE DATE(datetime) = :date
-                    GROUP BY glos
-                ) f2 ON f1.glos = f2.glos
-                WHERE DATE(f1.datetime) = :date2
-                AND CONCAT(
-                    CASE 
-                        WHEN HOUR(f1.datetime) = 0 AND MINUTE(f1.datetime) = 0 AND SECOND(f1.datetime) = 0 AND f1.filename REGEXP '_[0-9]{6}_[0-9]+_' THEN
-                            CONCAT(DATE(f1.datetime), '_', 
-                                   LPAD(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(f1.filename, '_', 3), '_', -1) AS UNSIGNED), 10, '0'))
-                        WHEN HOUR(f1.datetime) = 0 AND MINUTE(f1.datetime) = 0 AND SECOND(f1.datetime) = 0 AND f1.filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN
-                            CONCAT(DATE(f1.datetime), '_', 
-                                   LPAD(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(f1.filename, '.', 1), '_', -1) AS UNSIGNED), 10, '0'))
-                        ELSE 
-                            CONCAT(f1.datetime, '_0000000000')
-                    END
-                ) = f2.sort_key
-                ORDER BY f1.datetime DESC";
-        
-        if ($limit) {
-            $sql .= " LIMIT :limit OFFSET :offset";
-        }
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->bindParam(':date', $date, PDO::PARAM_STR);
-        $stmt->bindParam(':date2', $date, PDO::PARAM_STR);
-        
-        if ($limit) {
-            $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
-            $stmt->bindParam(':offset', $offset, PDO::PARAM_INT);
-        }
-        
-        $stmt->execute();
-        
-        $results = $stmt->fetchAll();
-        $grouped = [];
-        
-        foreach ($results as $row) {
-            $dateKey = $row['date_only'];
-            if (!isset($grouped[$dateKey])) {
-                $grouped[$dateKey] = [];
-            }
-            $grouped[$dateKey][] = $row;
-        }
-        
-        return $grouped;
-    }
-    
-    public function getAllFilesCount() {
-        // Count only unique glosses (latest version of each)
-        $sql = "SELECT COUNT(DISTINCT glos) as total FROM mocap_files";
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute();
-        $result = $stmt->fetch();
-        return $result['total'];
-    }
-    
-    public function getAllFilesCountByDate($date) {
-        // Count only unique glosses (latest version of each) for specific date
-        $sql = "SELECT COUNT(DISTINCT glos) as total FROM mocap_files WHERE DATE(datetime) = :date";
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->bindParam(':date', $date, PDO::PARAM_STR);
-        $stmt->execute();
-        $result = $stmt->fetch();
-        return $result['total'];
-    }
-    
-    public function getDuplicateGlosInfo() {
-        $sql = "SELECT glos, COUNT(*) as count, 
-                       MIN(datetime) as first_created, 
-                       MAX(datetime) as latest_created
-                FROM mocap_files 
-                WHERE is_pp = 0
-                GROUP BY glos 
-                HAVING COUNT(*) > 1
-                ORDER BY count DESC, latest_created DESC";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute();
-        return $stmt->fetchAll();
-    }
-    
-    public function getTotalDuplicatesCount() {
-        $sql = "SELECT SUM(duplicate_count - 1) as total_duplicates
-                FROM (
-                    SELECT glos, COUNT(*) as duplicate_count
-                    FROM mocap_files 
-                    WHERE is_pp = 0
-                    GROUP BY glos 
-                    HAVING COUNT(*) > 1
-                ) as duplicates";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute();
-        $result = $stmt->fetch();
-        return $result['total_duplicates'] ?? 0;
     }
 }
