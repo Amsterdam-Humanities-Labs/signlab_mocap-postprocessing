@@ -7,7 +7,7 @@ $headerIsAdmin = isAdmin($currentUser['username']);
     <div class="container mx-auto px-4 py-3 flex items-center justify-between">
         <div class="flex items-center gap-4">
             <h1 class="text-lg font-bold text-gray-800">Motion Capture File Manager</h1>
-            <a href="/menu.html" class="text-sm text-blue-600 hover:text-blue-800">Menu</a>
+            <a href="index.php" class="text-sm text-blue-600 hover:text-blue-800">Home</a>
         </div>
         <div class="flex items-center gap-4">
             <a href="stats.php" class="text-sm text-gray-600 hover:text-gray-800 font-medium">Statistieken</a>
