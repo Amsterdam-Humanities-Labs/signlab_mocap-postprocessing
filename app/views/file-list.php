@@ -292,7 +292,6 @@
         </div>
 
         <?php endif; /* end noAssignments check */ ?>
-    </div>
 
     <script>
         function toggleProcessed(fileId, action, btn) {
