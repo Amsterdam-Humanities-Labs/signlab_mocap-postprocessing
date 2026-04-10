@@ -661,6 +661,24 @@ class MocapFile {
         return $stmt->fetch()['total'];
     }
 
+    /**
+     * Get RIGHT camera video filenames for a set of capture_ids.
+     * Returns: ['2026-03-17/M20260112_9544_260317_0' => 'M20260112_9544_260317_0_RIGHT_2026-03-17_13-59-29.mkv', ...]
+     */
+    public function getRightVideos(array $captureIds): array {
+        if (empty($captureIds)) return [];
+        $ph = implode(',', array_fill(0, count($captureIds), '?'));
+        $sql = "SELECT capture_id, filename FROM vicon_files
+                WHERE capture_id IN ($ph) AND subdirectory = 'obs' AND filename LIKE '%RIGHT%'";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($captureIds);
+        $result = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $result[$row['capture_id']] = $row['filename'];
+        }
+        return $result;
+    }
+
     public function updateComment($id, $comment, $username) {
         $sql = "UPDATE vicon_files SET comment = ?, comment_by = ? WHERE id = ?";
         $stmt = $this->db->prepare($sql);

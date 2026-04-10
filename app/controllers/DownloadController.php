@@ -45,20 +45,48 @@ class DownloadController {
             }
             $downloadFilename = $file['filename_pp'];
         } else {
-            // Download original FBX — try glb_path directory first (same dir usually has FBX)
+            // Download original FBX + RIGHT MKV as ZIP
             $fbxLocalPath = str_replace('.glb', '.fbx', $file['glb_path'] ?? '');
-            if (!empty($fbxLocalPath) && file_exists($fbxLocalPath)) {
-                $localPath = $fbxLocalPath;
-            } else {
-                // Fallback: download from URL
+            if (empty($fbxLocalPath) || !file_exists($fbxLocalPath)) {
                 $fileUrl = $this->baseUrl . $file['filename'];
-                $localPath = $this->downloadFileToTemp($fileUrl, $file['filename']);
-                if (!$localPath) {
+                $fbxLocalPath = $this->downloadFileToTemp($fileUrl, $file['filename']);
+                if (!$fbxLocalPath) {
                     header('HTTP/1.0 500 Internal Server Error');
                     echo "Failed to download file";
                     exit;
                 }
             }
+
+            // Find RIGHT MKV via capture_id
+            $rightVideos = $this->mocapFileModel->getRightVideos([$file['capture_id']]);
+            $rightVideo = $rightVideos[$file['capture_id']] ?? null;
+            $mkvPath = $rightVideo ? '/mnt/bigstorage/razerFiles/' . $rightVideo : null;
+
+            if ($rightVideo && $mkvPath && file_exists($mkvPath)) {
+                // Bundle FBX + MKV in a ZIP
+                $baseName = preg_replace('/\\.fbx$/i', '', $file['filename']);
+                $zipPath = sys_get_temp_dir() . '/' . $baseName . '.zip';
+                $zip = new \ZipArchive();
+                if ($zip->open($zipPath, \ZipArchive::CREATE) === true) {
+                    $zip->addFile($fbxLocalPath, $file['filename']);
+                    $zip->addFile($mkvPath, $rightVideo);
+                    $zip->close();
+
+                    if (!empty($currentUser['username'])) {
+                        $this->logDownload($currentUser['username'], (int)$file['id'], $file['filename'], $type);
+                    }
+
+                    header('Content-Type: application/zip');
+                    header('Content-Disposition: attachment; filename="' . $baseName . '.zip"');
+                    header('Content-Length: ' . filesize($zipPath));
+                    readfile($zipPath);
+                    unlink($zipPath);
+                    exit;
+                }
+            }
+
+            // Fallback: just the FBX if no video found
+            $localPath = $fbxLocalPath;
             $downloadFilename = $file['filename'];
         }
 

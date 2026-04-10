@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Character Creator BabylonJS</title>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a2e; }
+        canvas { width: 100%; height: 100%; display: block; }
+        #ui { position: absolute; top: 10px; left: 10px; z-index: 10; display: flex; gap: 8px; }
+        #ui button, #ui label {
+            background: rgba(255,255,255,0.9); border: none; border-radius: 6px;
+            padding: 6px 14px; font-size: 13px; cursor: pointer; font-family: sans-serif;
+        }
+        #ui button:hover, #ui label:hover { background: #fff; }
+        #ui label { display: flex; align-items: center; gap: 6px; }
+        #status {
+            position: absolute; bottom: 10px; left: 10px; z-index: 10;
+            color: #aaa; font-size: 12px; font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="renderCanvas"></canvas>
+    <div id="ui">
+        <label>Skeletal (.glb)
+            <input type="file" id="skeletalFile" accept=".glb,.gltf" style="display:none">
+            <button onclick="document.getElementById('skeletalFile').click()">Load</button>
+        </label>
+        <button onclick="playAll()">Play All</button>
+    </div>
+    <div id="status">Loading avatar...</div>
+
+    <script>
+    var AVATAR_URL = "/animMIDI/babyloncc/dist/";
+    var AVATAR_FILE = "Palmer_optimized_ktx2.glb";
+    var EXCLUDED = ["cc_base_eyeocclusion","cc_base_tear_ducts","cc_base_tearline",
+        "chin_curtain_sparse","male_bushy","mustache_horseshoe","stubble_neck",
+        "cc_base_eye_primitive1","cc_base_eye_primitive3"];
+
+    var params = new URLSearchParams(window.location.search);
+    var animUrl = params.get("anim");
+    var videoUrl = params.get("video");
+    var scaleMult = parseFloat(params.get("scale-skeletal-anim") || "1") || 1;
+
+    var canvas = document.getElementById("renderCanvas");
+    var engine = new BABYLON.Engine(canvas, true);
+    engine.setHardwareScalingLevel(1.5);
+    var scene = new BABYLON.Scene(engine);
+    scene.createDefaultCameraOrLight(true, true, true);
+    var cam = scene.activeCamera;
+    if (cam) { cam.alpha = Math.PI/2; cam.beta = 1.2; cam.radius = 2.2; cam.minZ = 0.001; cam.lowerRadiusLimit = 0.005; }
+    window.addEventListener("resize", function() { engine.resize(); });
+
+    var currentGroups = [];
+    var boneMap = new Map();
+    var nodeMap = new Map();
+
+    function setStatus(msg) { document.getElementById("status").textContent = msg; }
+
+    async function loadAvatar() {
+        var result = await BABYLON.SceneLoader.ImportMeshAsync("", AVATAR_URL, AVATAR_FILE, scene);
+        var avatarRoot = result.transformNodes[0] || result.meshes.find(function(m){return !m.parent;}) || new BABYLON.TransformNode("avatarRoot", scene);
+        if (avatarRoot.scaling && avatarRoot.scaling.x === 0.01) avatarRoot.scaling.set(1,1,1);
+
+        result.meshes.forEach(function(m) {
+            var lower = m.name.toLowerCase();
+            if (EXCLUDED.some(function(ex){return lower.includes(ex.toLowerCase());})) { m.setEnabled(false); return; }
+            m.alwaysSelectAsActiveMesh = true;
+            var mat = m.material;
+            if (!mat) return;
+            var n = (m.name + " " + mat.name).toLowerCase();
+            if (n.includes("hair")) { mat.backFaceCulling = true; m.renderingGroupId = 0; mat.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND; }
+            else if (n.includes("eyelash")) { mat.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND; }
+            else if (n.includes("scalp")) { m.renderingGroupId = 0; m.alphaIndex = 0; }
+            else { mat.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_OPAQUE; }
+        });
+
+        scene.transformNodes.forEach(function(n) { if (n.name) nodeMap.set(n.name, n); });
+        scene.meshes.forEach(function(m) { if (m.name) nodeMap.set(m.name, m); });
+        scene.skeletons.forEach(function(skel) {
+            skel.bones.forEach(function(bone) {
+                if (!bone.name) return;
+                boneMap.set(skel.name + "/" + bone.name, bone);
+                boneMap.set(bone.name, bone);
+                var linked = bone.getTransformNode();
+                if (linked && linked.name && linked.name !== bone.name) boneMap.set(linked.name, bone);
+            });
+        });
+        console.log("[Avatar] meshes:" + result.meshes.length + " bones:" + boneMap.size + " nodes:" + nodeMap.size);
+        return avatarRoot;
+    }
+
+    function detectPositionScale(srcGroup) {
+        // Auto-detect scale by comparing animation pelvis position with avatar rest pose
+        var skel = scene.skeletons[0];
+        if (!skel) return 1;
+        var pelvisBone = skel.bones.find(function(b){ return b.name === "pelvis"; });
+        if (!pelvisBone) return 1;
+        var restZ = Math.abs(pelvisBone.getRestMatrix().getTranslation().z);
+        if (restZ < 0.01) return 1;
+
+        // Find pelvis position animation in source
+        for (var i = 0; i < srcGroup.targetedAnimations.length; i++) {
+            var ta = srcGroup.targetedAnimations[i];
+            if (ta.target && ta.target.name === "pelvis" && ta.animation.targetProperty === "position") {
+                var keys = ta.animation.getKeys();
+                if (keys.length > 0) {
+                    var animZ = Math.abs(keys[0].value.z);
+                    if (animZ > 0.001) {
+                        var scale = restZ / animZ;
+                        console.log("[Retarget] Auto-detected position scale: " + scale.toFixed(2) + " (rest=" + restZ.toFixed(2) + " anim=" + animZ.toFixed(4) + ")");
+                        return scale;
+                    }
+                }
+            }
+        }
+        return 1;
+    }
+
+    function retarget(srcGroup) {
+        var dst = new BABYLON.AnimationGroup(srcGroup.name + "_retarget", scene);
+        var posScale = detectPositionScale(srcGroup) * scaleMult;
+        console.log("[Retarget] posScale=" + posScale.toFixed(2));
+
+        var matched = 0, miss = 0;
+        srcGroup.targetedAnimations.forEach(function(ta) {
+            var anim = ta.animation, tgt = ta.target;
+            var name = tgt && tgt.name || "";
+            var cls = tgt && tgt.getClassName ? tgt.getClassName() : "";
+            var newTarget = null;
+
+            if (cls === "Bone") {
+                var k = tgt._skeleton ? tgt._skeleton.name + "/" + tgt.name : null;
+                var bone = (k && boneMap.get(k)) || boneMap.get(tgt.name) || null;
+                newTarget = bone && bone.getTransformNode ? (bone.getTransformNode() || bone) : bone;
+            } else if (cls === "MorphTarget") {
+                return;
+            } else if (name) {
+                var bone = boneMap.get(name) || null;
+                newTarget = bone && bone.getTransformNode ? (bone.getTransformNode() || bone) : (nodeMap.get(name) || null);
+            }
+
+            if (newTarget) {
+                matched++;
+                if (anim.targetProperty === "position" && posScale !== 1) {
+                    var sa = anim.clone();
+                    sa.setKeys(sa.getKeys().map(function(key) {
+                        var v = key.value;
+                        return (v && v.x !== undefined) ? {frame:key.frame, value:new BABYLON.Vector3(v.x*posScale,v.y*posScale,v.z*posScale)} : key;
+                    }));
+                    dst.addTargetedAnimation(sa, newTarget);
+                } else {
+                    dst.addTargetedAnimation(anim, newTarget);
+                }
+            } else {
+                miss++;
+                if (miss <= 3) console.log("[Retarget] MISS: " + name + " class=" + cls + " prop=" + anim.targetProperty);
+            }
+        });
+        console.log("[Retarget] matched=" + matched + " miss=" + miss + " total=" + dst.targetedAnimations.length);
+        dst.loopAnimation = true;
+        return dst;
+    }
+
+    function stopAll() { currentGroups.forEach(function(g){try{g.stop();}catch(e){}try{g.dispose();}catch(e){}}); currentGroups=[]; }
+    function playAll() { currentGroups.forEach(function(g){g.play(true);}); }
+
+    var bgVideo = null;
+
+    function setupVideoBackground(url) {
+        if (!url) return;
+        var video = document.createElement("video");
+        video.src = url;
+        video.muted = true;
+        video.crossOrigin = "anonymous";
+        video.playsInline = true;
+        video.preload = "auto";
+        // Don't autoplay — we'll drive it from the animation frame
+        video.pause();
+        bgVideo = video;
+
+        var videoTexture = new BABYLON.VideoTexture("bgVideo", video, scene, false, true);
+        videoTexture.vScale = -1;
+        videoTexture.vOffset = 1;
+
+        var plane = BABYLON.MeshBuilder.CreatePlane("bgPlane", { width: 3, height: 2 }, scene);
+        plane.position = new BABYLON.Vector3(0, 1.3, 1.5);
+        plane.rotation.y = Math.PI;
+
+        var mat = new BABYLON.StandardMaterial("bgMat", scene);
+        mat.diffuseTexture = videoTexture;
+        mat.emissiveTexture = videoTexture;
+        mat.backFaceCulling = false;
+        mat.disableLighting = true;
+        plane.material = mat;
+
+        // Just keep video playing
+        video.play().catch(function() {});
+
+        console.log("[Video] background set up, synced to animation:", url);
+    }
+
+    function frameAvatar() {
+        var skel = scene.skeletons[0];
+        if (!skel || !cam) return;
+        var pelvis = skel.bones.find(function(b){return b.name==="pelvis";});
+        var head = skel.bones.find(function(b){return b.name==="head";});
+        if (!pelvis || !head) return;
+        var pelvisY = pelvis.getTransformNode().getAbsolutePosition().y;
+        var headY = head.getTransformNode().getAbsolutePosition().y;
+        var headX = head.getTransformNode().getAbsolutePosition().x;
+        var headZ = head.getTransformNode().getAbsolutePosition().z;
+        // Target between chest and chin, slight headroom
+        var targetY = pelvisY + (headY - pelvisY) * 0.65;
+        cam.setTarget(new BABYLON.Vector3(headX, targetY, headZ));
+        cam.radius = (headY - pelvisY) * 1.8;
+        cam.alpha = -Math.PI / 2;
+        cam.beta = Math.PI / 2.2;  // slightly above eye level
+        cam.minZ = 0.01;
+        cam.lowerRadiusLimit = 0.1;
+        console.log("[Camera] framed: targetY=" + targetY.toFixed(3) + " radius=" + cam.radius.toFixed(3));
+    }
+
+    async function loadAnimUrl(url) {
+        setStatus("Loading animation...");
+        var i = url.lastIndexOf("/");
+        var container;
+        try { container = await BABYLON.SceneLoader.LoadAssetContainerAsync(url.substring(0,i+1), url.substring(i+1), scene); }
+        catch(e) { console.error(e); setStatus("Failed to load"); return; }
+        var groups = container.animationGroups || [];
+        if (!groups.length) { container.dispose(); setStatus("No animations"); return; }
+        stopAll();
+        groups.forEach(function(g) { currentGroups.push(retarget(g)); });
+        container.dispose();
+        setStatus("Playing " + currentGroups.length + " group(s)");
+        playAll();
+    }
+
+    async function loadAnimFile(file) {
+        if (!file) return;
+        setStatus("Loading " + file.name + "...");
+        var container;
+        try { container = await BABYLON.SceneLoader.LoadAssetContainerAsync("file:", file, scene); }
+        catch(e) { console.error(e); setStatus("Failed"); return; }
+        var groups = container.animationGroups || [];
+        if (!groups.length) { container.dispose(); setStatus("No animations"); return; }
+        stopAll();
+        groups.forEach(function(g) { currentGroups.push(retarget(g)); });
+        container.dispose();
+        setStatus("Playing " + currentGroups.length + " group(s)");
+        playAll();
+    }
+
+    document.getElementById("skeletalFile").addEventListener("change", function(e) { if (e.target.files[0]) loadAnimFile(e.target.files[0]); });
+    window.addEventListener("keydown", function(e) {
+        if (e.key==="j"||e.key==="J") frameAvatar();
+    });
+
+    (async function() {
+        try {
+            await loadAvatar();
+            frameAvatar();
+            if (videoUrl) setupVideoBackground(videoUrl);
+            setStatus(animUrl ? "Loading animation..." : "Drop a .glb or use Load button. Press J to center camera.");
+            if (animUrl) await loadAnimUrl(animUrl);
+        } catch(e) { console.error("[Boot]",e); setStatus("Error: "+e.message); }
+        engine.runRenderLoop(function(){scene.render();});
+    })();
+    </script>
+</body>
+</html>

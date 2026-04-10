@@ -222,16 +222,18 @@
                                                 <?php
                                                     $baseGlos = preg_replace('/\\.fbx$/i', '', $file['filename']);
                                                     $glbUrl = !empty($file['glb_path']) ? str_replace('/web/', '/', $file['glb_path']) : '';
-                                                    $previewUrl = $glbUrl ? '/animMIDI/babyloncc/dist/?anim=' . urlencode($glbUrl) : '';
+                                                    $rightVideo = $rightVideos[$file['capture_id']] ?? '';
+                                                    $videoParam = $rightVideo ? '&video=' . urlencode('/gebarenoverleg_media/razerFiles/' . $rightVideo) : '';
+                                                    $previewUrl = $glbUrl ? '/animMIDI/babyloncc/dist/?anim=' . urlencode($glbUrl) . $videoParam : '';
                                                 ?>
                                                 <?php if ($file['is_pp'] == 1): ?>
-                                                    <a href="https://avatar.signcollect.nl/blendAnims/compare.html?file=<?php echo urlencode($file['filename']); ?>"
+                                                    <a href="/animMIDI/babyloncc/dist/compare.html?file=<?php echo urlencode($baseGlos); ?>"
                                                        target="_blank" class="text-purple-600 hover:text-purple-800 mr-2">Compare</a>
                                                     <a href="download.php?id=<?php echo $file['id']; ?>&type=processed" class="text-green-600 hover:text-green-800">Download Processed</a>
                                                     <br>
                                                     <a href="download.php?id=<?php echo $file['id']; ?>&type=original" class="text-blue-600 hover:text-blue-800 text-sm">Download Original</a>
                                                 <?php else: ?>
-                                                    <a href="https://avatar.signcollect.nl/blendAnims/compare.html?file=<?php echo urlencode($baseGlos); ?>"
+                                                    <a href="/animMIDI/babyloncc/dist/compare.html?file=<?php echo urlencode($baseGlos); ?>"
                                                        target="_blank" class="text-purple-600 hover:text-purple-800 mr-2">Compare</a>
                                                     <a href="download.php?id=<?php echo $file['id']; ?>" class="text-blue-600 hover:text-blue-800">Download Original</a>
                                                 <?php endif; ?>
