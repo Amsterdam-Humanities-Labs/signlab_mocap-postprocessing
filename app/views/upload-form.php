@@ -7,11 +7,12 @@
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100">
+    <?php require_once __DIR__ . '/partials/header.php'; ?>
     <div class="container mx-auto px-4 py-8 max-w-4xl">
-        <header class="mb-8">
-            <h1 class="text-3xl font-bold text-gray-800 mb-2">Upload Processed Files</h1>
-            <a href="index.php" class="text-blue-600 hover:text-blue-800">← Back to File List</a>
-        </header>
+        <div class="mb-6">
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">Upload Processed Files</h2>
+            <a href="index.php" class="text-blue-600 hover:text-blue-800">&larr; Back to File List</a>
+        </div>
 
         <div class="bg-white rounded-lg shadow p-6 mb-6">
             <h2 class="text-xl font-semibold mb-4">Upload Individual Files</h2>
