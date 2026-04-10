@@ -182,7 +182,7 @@
                                                 <?php
                                                     $baseGlos = preg_replace('/\\.fbx$/i', '', $file['filename']);
                                                     $glbUrl = !empty($file['glb_path']) ? str_replace('/web/', '/', $file['glb_path']) : '';
-                                                    $previewUrl = $glbUrl ? '/animMIDI/babyloncc/?anim=' . urlencode($glbUrl) : '';
+                                                    $previewUrl = $glbUrl ? '/animMIDI/babyloncc/dist/?anim=' . urlencode($glbUrl) : '';
                                                 ?>
                                                 <?php if ($file['is_pp'] == 1): ?>
                                                     <a href="https://avatar.signcollect.nl/blendAnims/compare.html?file=<?php echo urlencode($file['filename']); ?>"
