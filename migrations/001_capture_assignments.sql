@@ -4,5 +4,5 @@ CREATE TABLE IF NOT EXISTS capture_assignments (
     capture_date DATE NOT NULL,
     assigned_by VARCHAR(255) NOT NULL,
     assigned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY unique_user_date (username, capture_date)
+    UNIQUE KEY unique_date (capture_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

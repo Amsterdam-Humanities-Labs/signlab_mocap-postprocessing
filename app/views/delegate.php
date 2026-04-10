@@ -94,42 +94,45 @@
     </div>
 
     <script>
-        // Build lookup of assigned dates per user
-        const userAssignedDates = <?php
-            $lookup = [];
+        // Build lookup: date → assigned username (max 1 user per date)
+        const dateAssignedTo = <?php
+            $dateLookup = [];
             foreach ($assignments as $u => $uAssignments) {
-                $lookup[$u] = array_column($uAssignments, 'capture_date');
+                foreach ($uAssignments as $a) {
+                    $dateLookup[$a['capture_date']] = $u;
+                }
             }
-            echo json_encode($lookup, JSON_UNESCAPED_SLASHES);
+            echo json_encode($dateLookup, JSON_UNESCAPED_SLASHES);
         ?>;
+        const dateCounts = <?php echo json_encode($dateCounts); ?>;
 
-        // When user changes, disable already-assigned dates
-        document.getElementById('userSelect').addEventListener('change', function() {
-            const selectedUser = this.value;
-            const assignedDates = userAssignedDates[selectedUser] || [];
-
+        // Disable dates that are already assigned to any user
+        function updateDateStates() {
             document.querySelectorAll('.date-label').forEach(label => {
                 const date = label.dataset.date;
                 const cb = label.querySelector('.date-cb');
                 const info = label.querySelector('.date-info');
-                const isAssigned = assignedDates.includes(date);
+                const assignedTo = dateAssignedTo[date];
 
-                cb.disabled = isAssigned;
-                cb.checked = false;
-                label.classList.toggle('opacity-40', isAssigned);
-                if (isAssigned) {
-                    info.textContent = 'toegewezen';
+                if (assignedTo) {
+                    cb.disabled = true;
+                    cb.checked = false;
+                    label.classList.add('opacity-40');
+                    info.textContent = assignedTo;
                     info.className = 'date-info text-xs text-green-600 font-medium';
                 } else {
-                    info.textContent = (<?php echo json_encode($dateCounts); ?>[date] || 0) + ' files';
+                    cb.disabled = false;
+                    label.classList.remove('opacity-40');
+                    info.textContent = (dateCounts[date] || 0) + ' files';
                     info.className = 'date-info text-gray-400 text-xs';
                 }
             });
 
-            // Reset select all
             const selectAll = document.getElementById('selectAllDates');
             if (selectAll) selectAll.checked = false;
-        });
+        }
+
+        updateDateStates();
 
         document.getElementById('selectAllDates')?.addEventListener('change', function() {
             document.querySelectorAll('.date-cb').forEach(cb => {
