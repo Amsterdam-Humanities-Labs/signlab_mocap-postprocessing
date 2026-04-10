@@ -242,7 +242,7 @@
                                                 </button>
                                                 <?php if ($previewUrl): ?>
                                                     <br>
-                                                    <a href="#" onclick="openPreview('<?php echo $previewUrl; ?>', '<?php echo htmlspecialchars($file['filename']); ?>'); return false;" class="text-orange-600 hover:text-orange-800 text-sm">Preview Animation</a>
+                                                    <button type="button" onclick="openPreview('<?php echo $previewUrl; ?>', '<?php echo htmlspecialchars($file['filename']); ?>')" class="text-orange-600 hover:text-orange-800 text-sm bg-transparent border-0 cursor-pointer p-0">Preview Animation</button>
                                                 <?php endif; ?>
                                             </td>
                                         </tr>
