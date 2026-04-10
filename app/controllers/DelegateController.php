@@ -22,6 +22,7 @@ class DelegateController {
 
         $users = $this->assignmentModel->getActiveUsers();
         $availableDates = $this->mocapFileModel->getAvailableDates('unprocessed');
+        $dateCounts = $this->mocapFileModel->getDateCounts();
         $assignments = $this->assignmentModel->getAllAssignments();
 
         require_once dirname(__DIR__) . '/views/delegate.php';
