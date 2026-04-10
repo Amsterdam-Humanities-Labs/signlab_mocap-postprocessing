@@ -6,10 +6,12 @@
     <title>Motion Capture File Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100">
+<body class="bg-gray-100 overflow-hidden h-screen flex flex-col">
     <?php require_once __DIR__ . '/partials/header.php'; ?>
 
-    <div class="container mx-auto px-4 py-4">
+    <div class="flex flex-1 overflow-hidden">
+    <!-- Main content -->
+    <div id="mainContent" class="flex-1 overflow-y-auto px-4 py-4">
         <div class="mb-6 flex gap-4">
             <div class="bg-blue-100 px-4 py-2 rounded">
                 <span class="text-blue-800 font-semibold">Unprocessed: <?php echo $unprocessedCount; ?></span>
@@ -240,7 +242,7 @@
                                                 </button>
                                                 <?php if ($previewUrl): ?>
                                                     <br>
-                                                    <a href="<?php echo $previewUrl; ?>" target="_blank" class="text-orange-600 hover:text-orange-800 text-sm">Preview Animation</a>
+                                                    <a href="#" onclick="openPreview('<?php echo $previewUrl; ?>', '<?php echo htmlspecialchars($file['filename']); ?>'); return false;" class="text-orange-600 hover:text-orange-800 text-sm">Preview Animation</a>
                                                 <?php endif; ?>
                                             </td>
                                         </tr>
@@ -435,6 +437,80 @@
             textarea.classList.add('hidden');
             display.classList.remove('hidden');
         }
+    </script>
+
+    </div><!-- end mainContent -->
+
+    <!-- Resize handle -->
+    <div id="resizeHandle" class="hidden w-1.5 cursor-col-resize bg-gray-300 hover:bg-blue-400 active:bg-blue-500 flex-shrink-0"></div>
+
+    <!-- Preview sidebar -->
+    <div id="previewSidebar" class="hidden flex-shrink-0 bg-white border-l border-gray-300 flex flex-col" style="width: 50%;">
+        <div class="flex items-center justify-between px-3 py-2 bg-gray-50 border-b">
+            <span id="previewTitle" class="text-sm font-medium text-gray-700 truncate"></span>
+            <button onclick="closePreview()" class="text-gray-500 hover:text-red-600 text-lg font-bold px-2" title="Close">&times;</button>
+        </div>
+        <iframe id="previewFrame" class="flex-1 w-full" frameborder="0"></iframe>
+    </div>
+
+    </div><!-- end flex container -->
+
+    <script>
+    // Preview sidebar
+    function openPreview(url, filename) {
+        const sidebar = document.getElementById('previewSidebar');
+        const handle = document.getElementById('resizeHandle');
+        const frame = document.getElementById('previewFrame');
+        const title = document.getElementById('previewTitle');
+
+        frame.src = url;
+        title.textContent = filename;
+        sidebar.classList.remove('hidden');
+        handle.classList.remove('hidden');
+    }
+
+    function closePreview() {
+        const sidebar = document.getElementById('previewSidebar');
+        const handle = document.getElementById('resizeHandle');
+        const frame = document.getElementById('previewFrame');
+
+        sidebar.classList.add('hidden');
+        handle.classList.add('hidden');
+        frame.src = '';
+    }
+
+    // Resize logic
+    (function() {
+        const handle = document.getElementById('resizeHandle');
+        const sidebar = document.getElementById('previewSidebar');
+        let isResizing = false;
+
+        handle.addEventListener('mousedown', function(e) {
+            isResizing = true;
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            // Prevent iframe from eating mouse events
+            document.getElementById('previewFrame').style.pointerEvents = 'none';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!isResizing) return;
+            const newWidth = window.innerWidth - e.clientX;
+            const minWidth = 300;
+            const maxWidth = window.innerWidth - 400;
+            sidebar.style.width = Math.max(minWidth, Math.min(maxWidth, newWidth)) + 'px';
+        });
+
+        document.addEventListener('mouseup', function() {
+            if (isResizing) {
+                isResizing = false;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                document.getElementById('previewFrame').style.pointerEvents = '';
+            }
+        });
+    })();
     </script>
 </body>
 </html>
