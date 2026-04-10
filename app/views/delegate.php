@@ -42,12 +42,12 @@
                                     <span class="font-medium">Alles selecteren</span>
                                 </label>
                                 <?php foreach ($availableDates as $d): ?>
-                                    <label class="flex items-center justify-between text-sm">
+                                    <label class="flex items-center justify-between text-sm date-label" data-date="<?php echo htmlspecialchars($d); ?>">
                                         <span>
                                             <input type="checkbox" name="dates[]" value="<?php echo htmlspecialchars($d); ?>" class="date-cb mr-2">
                                             <?php echo date('F j, Y', strtotime($d)); ?>
                                         </span>
-                                        <span class="text-gray-400 text-xs"><?php echo $dateCounts[$d] ?? 0; ?> files</span>
+                                        <span class="date-info text-gray-400 text-xs"><?php echo $dateCounts[$d] ?? 0; ?> files</span>
                                     </label>
                                 <?php endforeach; ?>
                             <?php endif; ?>
@@ -94,8 +94,47 @@
     </div>
 
     <script>
+        // Build lookup of assigned dates per user
+        const userAssignedDates = <?php
+            $lookup = [];
+            foreach ($assignments as $u => $uAssignments) {
+                $lookup[$u] = array_column($uAssignments, 'capture_date');
+            }
+            echo json_encode($lookup, JSON_UNESCAPED_SLASHES);
+        ?>;
+
+        // When user changes, disable already-assigned dates
+        document.getElementById('userSelect').addEventListener('change', function() {
+            const selectedUser = this.value;
+            const assignedDates = userAssignedDates[selectedUser] || [];
+
+            document.querySelectorAll('.date-label').forEach(label => {
+                const date = label.dataset.date;
+                const cb = label.querySelector('.date-cb');
+                const info = label.querySelector('.date-info');
+                const isAssigned = assignedDates.includes(date);
+
+                cb.disabled = isAssigned;
+                cb.checked = false;
+                label.classList.toggle('opacity-40', isAssigned);
+                if (isAssigned) {
+                    info.textContent = 'toegewezen';
+                    info.className = 'date-info text-xs text-green-600 font-medium';
+                } else {
+                    info.textContent = (<?php echo json_encode($dateCounts); ?>[date] || 0) + ' files';
+                    info.className = 'date-info text-gray-400 text-xs';
+                }
+            });
+
+            // Reset select all
+            const selectAll = document.getElementById('selectAllDates');
+            if (selectAll) selectAll.checked = false;
+        });
+
         document.getElementById('selectAllDates')?.addEventListener('change', function() {
-            document.querySelectorAll('.date-cb').forEach(cb => cb.checked = this.checked);
+            document.querySelectorAll('.date-cb').forEach(cb => {
+                if (!cb.disabled) cb.checked = this.checked;
+            });
         });
 
         document.getElementById('assignForm').addEventListener('submit', function(e) {
