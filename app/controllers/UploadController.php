@@ -2,11 +2,13 @@
 namespace App\controllers;
 
 use App\models\MocapFile;
+use App\config\Database;
 use ZipArchive;
 
 class UploadController {
     private $mocapFileModel;
     private $storageDir;
+    private $currentUsername = '';
     
     public function __construct() {
         $this->mocapFileModel = new MocapFile();
@@ -22,6 +24,7 @@ class UploadController {
     }
     
     public function processUpload(array $currentUser = []) {
+        $this->currentUsername = $currentUser['username'] ?? '';
         $results = ['success' => [], 'errors' => []];
         $allowOverwrite = isset($_POST['allow_overwrite']) && $_POST['allow_overwrite'] == '1';
         
@@ -83,12 +86,15 @@ class UploadController {
         
         // Update database with storage filename (which is the original filename)
         $this->mocapFileModel->markAsProcessed($mocapFile['id'], $storageFilename);
-        
+
+        // Log upload activity
+        $this->logUpload($mocapFile['id'], $storageFilename);
+
         $message = "File '$filename' processed successfully";
         if ($mocapFile['is_pp'] == 1) {
             $message .= " (overwritten)";
         }
-        
+
         return ['success' => true, 'message' => $message];
     }
     
@@ -153,7 +159,10 @@ class UploadController {
                 
                 // Update database with storage filename (which is the original filename)
                 $this->mocapFileModel->markAsProcessed($mocapFile['id'], $storageFilename);
-                
+
+                // Log upload activity
+                $this->logUpload($mocapFile['id'], $storageFilename);
+
                 $message = "File '$filename' processed successfully";
                 if ($mocapFile['is_pp'] == 1) {
                     $message .= " (overwritten)";
@@ -257,6 +266,13 @@ class UploadController {
         return $fbxFiles;
     }
     
+    private function logUpload(int $fileId, string $filename): void {
+        if (empty($this->currentUsername)) return;
+        $db = Database::getInstance()->getConnection();
+        $stmt = $db->prepare("INSERT INTO download_logs (username, file_id, filename, download_type) VALUES (?, ?, ?, 'upload')");
+        $stmt->execute([$this->currentUsername, $fileId, $filename]);
+    }
+
     private function isTrueSystemFile($filename) {
         // Skip common system files (but not files with ._ in their actual names)
         $systemFiles = ['.DS_Store', 'Thumbs.db', '__MACOSX', '._.DS_Store'];

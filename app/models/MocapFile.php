@@ -655,6 +655,54 @@ class MocapFile {
         return $stmt->fetch()['total'];
     }
 
+    // ─── Activity ───
+
+    /**
+     * Get the latest activity for a set of file IDs.
+     * Returns: [file_id => ['username' => ..., 'action' => ..., 'downloaded_at' => ...], ...]
+     */
+    public function getLatestActivity(array $fileIds): array {
+        if (empty($fileIds)) {
+            return [];
+        }
+        $ph = implode(',', array_fill(0, count($fileIds), '?'));
+        $sql = "SELECT dl.file_id, dl.username, dl.download_type AS action, dl.downloaded_at
+                FROM download_logs dl
+                INNER JOIN (
+                    SELECT file_id, MAX(downloaded_at) AS max_at
+                    FROM download_logs
+                    GROUP BY file_id
+                ) latest ON dl.file_id = latest.file_id AND dl.downloaded_at = latest.max_at
+                WHERE dl.file_id IN ($ph)";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($fileIds);
+        $result = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $result[$row['file_id']] = $row;
+        }
+        return $result;
+    }
+
+    /**
+     * Check which file IDs have been downloaded at least once.
+     * Returns: [file_id => true, ...]
+     */
+    public function getDownloadedFileIds(array $fileIds): array {
+        if (empty($fileIds)) {
+            return [];
+        }
+        $ph = implode(',', array_fill(0, count($fileIds), '?'));
+        $sql = "SELECT DISTINCT file_id FROM download_logs
+                WHERE file_id IN ($ph) AND download_type IN ('original', 'processed', 'bulk')";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($fileIds);
+        $result = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $id) {
+            $result[$id] = true;
+        }
+        return $result;
+    }
+
     // ─── Helpers ───
 
     private function groupByDate(array $results, string $dateField): array {
