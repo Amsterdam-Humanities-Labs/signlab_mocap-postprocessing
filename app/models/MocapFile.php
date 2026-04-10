@@ -661,6 +661,12 @@ class MocapFile {
         return $stmt->fetch()['total'];
     }
 
+    public function updateComment($id, $comment, $username) {
+        $sql = "UPDATE vicon_files SET comment = ?, comment_by = ? WHERE id = ?";
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute([$comment, $username, $id]);
+    }
+
     // ─── Activity ───
 
     /**
