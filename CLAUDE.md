@@ -82,13 +82,15 @@ Capture date extracted from `vicon_files.capture_id` via `SUBSTRING_INDEX(captur
 Standalone HTML files using BabylonJS CDN — no build step required. Edit and refresh.
 
 - **index.html**: Single animation preview. URL params: `?anim=` (GLB path), `?video=` (MKV background), `?scale-skeletal-anim=` (position multiplier)
-- **compare.html**: Side-by-side original vs post-processed. URL param: `?file=` (filename without extension). Auto-detects per-bone rotation amplification to compensate for Unreal export reduction.
+- **compare.html**: Side-by-side original vs post-processed. URL param: `?file=` (filename without extension). Auto-detects per-bone rotation amplification to compensate for Unreal export reduction. Includes frame scrubber slider, play/pause, and 1.5m avatar separation.
 
 Key technical details:
 - Animation GLBs have no skeleton (0 skins) — they animate TransformNodes
 - Retargeting matches TransformNode names to avatar bone linked TransformNodes
 - Auto-detects position scale (meters → centimeters, ~102x)
-- Per-bone rotation amplification for post-processed animations
+- Per-bone rotation amplification for post-processed animations (built from CC vs PP rotation range comparison)
+- Press **`i`** key in any viewer to toggle the BabylonJS Inspector (debug layer)
+- Compare link in file list only shows for processed files (`is_pp == 1`)
 
 ### File Storage Paths
 

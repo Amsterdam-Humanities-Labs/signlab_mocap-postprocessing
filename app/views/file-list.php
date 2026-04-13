@@ -233,8 +233,6 @@
                                                     <br>
                                                     <a href="download.php?id=<?php echo $file['id']; ?>&type=original" class="text-blue-600 hover:text-blue-800 text-sm">Download Original</a>
                                                 <?php else: ?>
-                                                    <a href="/animMIDI/babyloncc/dist/compare.html?file=<?php echo urlencode($baseGlos); ?>"
-                                                       target="_blank" class="text-purple-600 hover:text-purple-800 mr-2">Compare</a>
                                                     <a href="download.php?id=<?php echo $file['id']; ?>" class="text-blue-600 hover:text-blue-800">Download Original</a>
                                                 <?php endif; ?>
                                                 <br>
