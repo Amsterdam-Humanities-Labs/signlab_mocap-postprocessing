@@ -376,9 +376,11 @@
             .finally(() => buttons.forEach(btn => btn.disabled = false));
         }
 
-        document.querySelector('select[name="status"]')?.addEventListener('change', function() { this.form.submit(); });
-        document.querySelector('select[name="date"]')?.addEventListener('change', function() { this.form.submit(); });
-        document.querySelector('select[name="limit"]')?.addEventListener('change', function() { this.form.submit(); });
+        // Auto-submit filter form when any dropdown (status / date / limit / review)
+        // changes — the Apply Filter button is only needed for the text search field.
+        document.querySelectorAll('form[action="index.php"] select').forEach(function(sel) {
+            sel.addEventListener('change', function() { this.form.submit(); });
+        });
 
         document.querySelectorAll('.date-checkbox').forEach(checkbox => {
             checkbox.addEventListener('change', function() {
