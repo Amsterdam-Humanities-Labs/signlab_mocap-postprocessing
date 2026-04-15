@@ -123,6 +123,14 @@
                     var animZ = Math.abs(keys[0].value.z);
                     if (animZ > 0.001) {
                         var scale = restZ / animZ;
+                        // If scale is near 1, animation is already in the avatar's units.
+                        // Applying even a small (~1.08x) rescale to small local offsets like
+                        // l_eye / r_eye translations (~0.078) shifts eyes by several mm — very
+                        // visible. Only rescale when the ratio is clearly a unit mismatch.
+                        if (scale > 0.8 && scale < 1.2) {
+                            console.log("[Retarget] Animation already in avatar units (scale=" + scale.toFixed(3) + "), skipping rescale");
+                            return 1;
+                        }
                         console.log("[Retarget] Auto-detected position scale: " + scale.toFixed(2) + " (rest=" + restZ.toFixed(2) + " anim=" + animZ.toFixed(4) + ")");
                         return scale;
                     }
