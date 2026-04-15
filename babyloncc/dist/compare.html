@@ -98,6 +98,7 @@
             var n = (m.name + " " + mat.name).toLowerCase();
             if (n.includes("hair")) { mat.backFaceCulling = true; m.renderingGroupId = 0; mat.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND; }
             else if (n.includes("eyelash")) { mat.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND; }
+            else if (n.includes("brow")) { mat.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND; }
             else if (n.includes("scalp")) { m.renderingGroupId = 0; m.alphaIndex = 0; }
             else { mat.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_OPAQUE; }
         });
@@ -379,24 +380,25 @@
 
         frameCamera();
 
-        // Measure rotation ranges to auto-compute amplification
-        setStatus("Analyzing animations...");
-        var rawCC = await loadRawAnimGroup(originalUrl);
-        var rawPP = await loadRawAnimGroup(processedUrl);
+        // Rotation amplification disabled — show PP with the same rotations as the original.
+        // // Measure rotation ranges to auto-compute amplification
+        // setStatus("Analyzing animations...");
+        // var rawCC = await loadRawAnimGroup(originalUrl);
+        // var rawPP = await loadRawAnimGroup(processedUrl);
+        //
+        // var perBoneAmplify = {};
+        // if (rawCC && rawCC.group && rawPP && rawPP.group) {
+        //     perBoneAmplify = buildPerBoneAmplify(rawCC.group, rawPP.group);
+        // }
+        // if (rawCC && rawCC.container) rawCC.container.dispose();
+        // if (rawPP && rawPP.container) rawPP.container.dispose();
 
-        var perBoneAmplify = {};
-        if (rawCC && rawCC.group && rawPP && rawPP.group) {
-            perBoneAmplify = buildPerBoneAmplify(rawCC.group, rawPP.group);
-        }
-        if (rawCC && rawCC.container) rawCC.container.dispose();
-        if (rawPP && rawPP.container) rawPP.container.dispose();
-
-        // Load animations: original as-is, PP with per-bone amplification
+        // Load animations: both sides as-is (no amplification)
         setStatus("Loading original animation...");
         var leftGroups = await loadAnimForAvatar(originalUrl, leftAvatar, {});
 
         setStatus("Loading post-processed animation...");
-        var rightGroups = await loadAnimForAvatar(processedUrl, rightAvatar, perBoneAmplify);
+        var rightGroups = await loadAnimForAvatar(processedUrl, rightAvatar, {});
 
         if (leftGroups) allGroups = allGroups.concat(leftGroups);
         if (rightGroups) allGroups = allGroups.concat(rightGroups);

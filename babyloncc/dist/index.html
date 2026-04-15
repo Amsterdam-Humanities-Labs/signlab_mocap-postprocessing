@@ -85,6 +85,7 @@
             var n = (m.name + " " + mat.name).toLowerCase();
             if (n.includes("hair")) { mat.backFaceCulling = true; m.renderingGroupId = 0; mat.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND; }
             else if (n.includes("eyelash")) { mat.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND; }
+            else if (n.includes("brow")) { mat.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND; }
             else if (n.includes("scalp")) { m.renderingGroupId = 0; m.alphaIndex = 0; }
             else { mat.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_OPAQUE; }
         });
