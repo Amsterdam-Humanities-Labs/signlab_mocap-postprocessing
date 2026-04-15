@@ -128,33 +128,11 @@
         return { root: avatarRoot, wrapper: wrapper, boneMap: boneMap, nodeMap: nodeMap, skeleton: skel };
     }
 
-    function detectPositionScale(srcGroup, skel) {
-        if (!skel) return 1;
-        var pelvisBone = skel.bones.find(function(b){ return b.name === "pelvis"; });
-        if (!pelvisBone) return 1;
-        var restZ = Math.abs(pelvisBone.getRestMatrix().getTranslation().z);
-        if (restZ < 0.01) return 1;
-        for (var i = 0; i < srcGroup.targetedAnimations.length; i++) {
-            var ta = srcGroup.targetedAnimations[i];
-            if (ta.target && ta.target.name === "pelvis" && ta.animation.targetProperty === "position") {
-                var keys = ta.animation.getKeys();
-                if (keys.length > 0) {
-                    var animZ = Math.abs(keys[0].value.z);
-                    if (animZ > 0.001) {
-                        var scale = restZ / animZ;
-                        // If scale is near 1 (0.8-1.2), animation is already in cm — no scaling needed
-                        if (scale > 0.8 && scale < 1.2) {
-                            console.log("[Scale] Animation already in cm (scale=" + scale.toFixed(3) + "), skipping");
-                            return 1;
-                        }
-                        console.log("[Scale] Detected m->cm scale: " + scale.toFixed(2));
-                        return scale;
-                    }
-                }
-            }
-        }
-        return 1;
-    }
+    // Blender FBX→GLB exports are always in meters (pelvis rest Z = 1.0035) and Palmer is
+    // authored in centimeters (pelvis rest Z = 100.35), so the conversion is a fixed ×100.
+    // See index.html for the full rationale — auto-detecting from frame 0 of a non-rest
+    // pose gave noisy ratios (102–108) that shifted eye sockets by several mm.
+    var POS_SCALE = 100;
 
     // Measure rotation range of a bone in an animation group
     function measureRotationRange(srcGroup, boneName) {
@@ -218,7 +196,7 @@
     function retarget(srcGroup, boneMap, nodeMap, skel, perBoneAmplify) {
         perBoneAmplify = perBoneAmplify || {};
         var dst = new BABYLON.AnimationGroup(srcGroup.name + "_retarget", scene);
-        var posScale = detectPositionScale(srcGroup, skel);
+        var posScale = POS_SCALE;
         var matched = 0, miss = 0;
 
         srcGroup.targetedAnimations.forEach(function(ta) {
