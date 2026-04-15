@@ -105,44 +105,17 @@
         return avatarRoot;
     }
 
-    function detectPositionScale(srcGroup) {
-        // Auto-detect scale by comparing animation pelvis position with avatar rest pose
-        var skel = scene.skeletons[0];
-        if (!skel) return 1;
-        var pelvisBone = skel.bones.find(function(b){ return b.name === "pelvis"; });
-        if (!pelvisBone) return 1;
-        var restZ = Math.abs(pelvisBone.getRestMatrix().getTranslation().z);
-        if (restZ < 0.01) return 1;
-
-        // Find pelvis position animation in source
-        for (var i = 0; i < srcGroup.targetedAnimations.length; i++) {
-            var ta = srcGroup.targetedAnimations[i];
-            if (ta.target && ta.target.name === "pelvis" && ta.animation.targetProperty === "position") {
-                var keys = ta.animation.getKeys();
-                if (keys.length > 0) {
-                    var animZ = Math.abs(keys[0].value.z);
-                    if (animZ > 0.001) {
-                        var scale = restZ / animZ;
-                        // If scale is near 1, animation is already in the avatar's units.
-                        // Applying even a small (~1.08x) rescale to small local offsets like
-                        // l_eye / r_eye translations (~0.078) shifts eyes by several mm — very
-                        // visible. Only rescale when the ratio is clearly a unit mismatch.
-                        if (scale > 0.8 && scale < 1.2) {
-                            console.log("[Retarget] Animation already in avatar units (scale=" + scale.toFixed(3) + "), skipping rescale");
-                            return 1;
-                        }
-                        console.log("[Retarget] Auto-detected position scale: " + scale.toFixed(2) + " (rest=" + restZ.toFixed(2) + " anim=" + animZ.toFixed(4) + ")");
-                        return scale;
-                    }
-                }
-            }
-        }
-        return 1;
-    }
+    // Blender's FBX→GLB export is deterministic: animations always come out in meters
+    // (pelvis rest Z = 1.0035), while Palmer is authored in centimeters (pelvis rest Z = 100.35).
+    // The conversion is a fixed ×100. Previously we auto-detected the ratio from the pelvis
+    // first keyframe, but when actors didn't start in rest pose the ratio drifted to 102–108
+    // and that 2–8% error pushed small local offsets like l_eye (~0.078) several mm out of
+    // their sockets. Hardcoding 100 is correct and robust.
+    var POS_SCALE = 100;
 
     function retarget(srcGroup) {
         var dst = new BABYLON.AnimationGroup(srcGroup.name + "_retarget", scene);
-        var posScale = detectPositionScale(srcGroup) * scaleMult;
+        var posScale = POS_SCALE * scaleMult;
         console.log("[Retarget] posScale=" + posScale.toFixed(2));
 
         var matched = 0, miss = 0;
