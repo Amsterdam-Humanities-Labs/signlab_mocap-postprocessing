@@ -67,6 +67,10 @@ Standalone HTML files — edit and refresh, no npm or build tools needed.
 - **Preview**: `/animMIDI/babyloncc/dist/?anim=/path/to/animation.glb`
 - **Compare**: `/animMIDI/babyloncc/dist/compare.html?file=M20260126_1880_260319_1`
 
+### Retargeting: unit conventions
+
+Animation GLBs come out of the Blender FBX→GLB pipeline in **meters** (pelvis rest ≈ 1.0 m). The Palmer avatar is authored in **centimeters** (pelvis rest ≈ 100 cm). The viewers retarget by matching TransformNode names and applying a fixed `×100` multiplier to every position channel — never a runtime-detected ratio. An earlier version auto-detected the scale from the pelvis animation's first keyframe, but actors don't always start in rest pose, so the ratio drifted to 102–108 and pushed small local offsets (eyes, jaw) visibly off. The Blender export is deterministic across all 668+ sampled takes; if you ever swap in a non-Blender exporter, re-verify that `node.translation` for `pelvis` / `cc_base_l_eye` is still 1/100 of Palmer's values before trusting the viewer.
+
 ## Requirements
 
 - PHP 7.4+ with PDO, cURL, ZIP extensions

@@ -87,10 +87,20 @@ Standalone HTML files using BabylonJS CDN — no build step required. Edit and r
 Key technical details:
 - Animation GLBs have no skeleton (0 skins) — they animate TransformNodes
 - Retargeting matches TransformNode names to avatar bone linked TransformNodes
-- Auto-detects position scale (meters → centimeters, ~102x)
-- Per-bone rotation amplification for post-processed animations (built from CC vs PP rotation range comparison)
+- Position scale is a **hardcoded ×100** (see retargeting notes below)
+- Per-bone rotation amplification for post-processed animations (built from CC vs PP rotation range comparison) — currently disabled in `compare.html` but helpers remain for future use
 - Press **`i`** key in any viewer to toggle the BabylonJS Inspector (debug layer)
 - Compare link in file list only shows for processed files (`is_pp == 1`)
+
+### Retargeting Notes
+
+The Babylon viewers retarget animation GLBs onto a separately loaded Palmer avatar by matching TransformNode names. A few things to know before touching `retarget()` in `index.html` or `compare.html`:
+
+- **Unit mismatch is fixed at ×100, not auto-detected.** The Blender FBX→GLB pipeline always exports in **meters** (pelvis rest Z = `1.0035`, eye local offsets ~`0.078`); Palmer is authored in **centimeters** (pelvis rest Z = `100.35`, eye ~`7.88`). The ratio is exactly 100 for every bone, verified across 668+ GLBs. `POS_SCALE = 100` lives at the top of each viewer's script — do not replace it with a runtime detector.
+- **Why not auto-detect from the pelvis animation?** A previous version computed `avatarRestZ / animation.keys[0].z`, but frame 0 is whatever pose the actor happened to be in. A slightly crouched actor gave ratios like 108 instead of 100. On the pelvis that's a centimeter-scale error (invisible), but on local offsets the size of an eyeball (`0.0788`), an 8% error pushes the eye ~6 mm out of its socket — the eyes were visibly misaligned for those takes.
+- **Eye bones are the canary.** They have tiny local translations (`cc_base_l_eye` / `cc_base_r_eye`, a few cm), so any error in the position-scale path shows up there first. If you change the retarget math, spot-check an eye in the Inspector (`i` key) against Palmer's rest pose before declaring success.
+- **Scale everything, not just pelvis.** All non-rotation position channels in the animation need ×100 — both pelvis locomotion and the static local offsets baked into every other bone. Skipping non-pelvis bones leaves them at 1/100 scale relative to Palmer's skeleton.
+- **If the export pipeline ever changes** (different Blender version, different exporter, or post-processing via a tool other than Unreal/Blender), reverify rest values. Drop a new GLB next to an old one, inspect `node.translation` for `pelvis` and `cc_base_l_eye`, and confirm the ratio to Palmer's bones is still 100.
 
 ### File Storage Paths
 
