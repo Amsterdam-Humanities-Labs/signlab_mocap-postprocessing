@@ -26,4 +26,18 @@ function logout() {
     document.cookie = 'sessionObject=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
     window.location.href = '/login.html';
 }
+(function trackActivity() {
+    var cookies = decodeURIComponent(document.cookie);
+    var sessionCookie = cookies.split('; ').find(function(row) { return row.startsWith('sessionObject='); });
+    if (!sessionCookie) return;
+    try {
+        var sessionData = JSON.parse(sessionCookie.split('=')[1]);
+        if (!sessionData.userId) return;
+        var page = 'animMIDI/' + (location.pathname.split('/').pop() || 'index.php');
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/users_api.php', true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        xhr.send('action=activity&userId=' + encodeURIComponent(sessionData.userId) + '&page=' + encodeURIComponent(page));
+    } catch (e) {}
+})();
 </script>
