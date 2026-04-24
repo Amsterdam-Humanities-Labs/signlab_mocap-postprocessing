@@ -58,6 +58,17 @@
                         </select>
                     </div>
                     <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Label</label>
+                        <?php $selectedLabel = $_GET['label'] ?? 'all'; ?>
+                        <select name="label" class="border border-gray-300 rounded-md px-3 py-2 text-sm">
+                            <option value="all" <?php echo $selectedLabel === 'all' ? 'selected' : ''; ?>>All Labels</option>
+                            <option value="bak" <?php echo $selectedLabel === 'bak' ? 'selected' : ''; ?>>BAK</option>
+                            <option value="znn" <?php echo $selectedLabel === 'znn' ? 'selected' : ''; ?>>ZNN</option>
+                            <option value="hh"  <?php echo $selectedLabel === 'hh'  ? 'selected' : ''; ?>>HH</option>
+                            <option value="sencity" <?php echo $selectedLabel === 'sencity' ? 'selected' : ''; ?>>Sencity</option>
+                        </select>
+                    </div>
+                    <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Files per page</label>
                         <select name="limit" class="border border-gray-300 rounded-md px-3 py-2 text-sm">
                             <option value="25" <?php echo $limit === 25 ? 'selected' : ''; ?>>25</option>
@@ -148,7 +159,24 @@
                                                 <?php endif; ?>
                                             </td>
                                             <?php endif; ?>
-                                            <td class="py-3 font-mono text-sm"><?php echo htmlspecialchars($file['filename']); ?></td>
+                                            <td class="py-3 font-mono text-sm">
+                                                <?php echo htmlspecialchars($file['filename']); ?>
+                                                <?php if (!empty($fileLabels[$file['id']])): ?>
+                                                    <div class="mt-1 flex flex-wrap gap-1">
+                                                        <?php foreach ($fileLabels[$file['id']] as $lbl): ?>
+                                                            <?php
+                                                                $bg = $lbl['color'] ?: '#6b7280';
+                                                                $short = $lbl['label'] === 'Basiswoordenlijst Amsterdamse Kleuters' ? 'BAK' : $lbl['label'];
+                                                            ?>
+                                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold text-white"
+                                                                  style="background-color: <?php echo htmlspecialchars($bg); ?>"
+                                                                  title="<?php echo htmlspecialchars($lbl['label']); ?>">
+                                                                <?php echo htmlspecialchars($short); ?>
+                                                            </span>
+                                                        <?php endforeach; ?>
+                                                    </div>
+                                                <?php endif; ?>
+                                            </td>
                                             <?php if ($selectedStatus === 'processed' || $selectedStatus === 'all'): ?>
                                             <td class="py-3 font-mono text-sm text-green-700"><?php echo htmlspecialchars($file['filename_pp'] ?? 'N/A'); ?></td>
                                             <td class="py-3 text-sm text-gray-600">
@@ -260,7 +288,7 @@
             <div class="mt-6 flex justify-center">
                 <nav class="flex space-x-2">
                     <?php if ($page > 1): ?>
-                        <a href="?status=<?php echo urlencode($selectedStatus); ?>&date=<?php echo urlencode($selectedDate); ?>&limit=<?php echo $limit; ?>&page=<?php echo $page - 1; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>"
+                        <a href="?status=<?php echo urlencode($selectedStatus); ?>&date=<?php echo urlencode($selectedDate); ?>&limit=<?php echo $limit; ?>&page=<?php echo $page - 1; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&label=<?php echo urlencode($selectedLabel); ?>"
                            class="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-500 hover:bg-gray-50">Previous</a>
                     <?php endif; ?>
                     <?php
@@ -270,12 +298,12 @@
                         <?php if ($i == $page): ?>
                             <span class="px-3 py-2 bg-blue-500 text-white rounded-md text-sm font-medium"><?php echo $i; ?></span>
                         <?php else: ?>
-                            <a href="?status=<?php echo urlencode($selectedStatus); ?>&date=<?php echo urlencode($selectedDate); ?>&limit=<?php echo $limit; ?>&page=<?php echo $i; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>"
+                            <a href="?status=<?php echo urlencode($selectedStatus); ?>&date=<?php echo urlencode($selectedDate); ?>&limit=<?php echo $limit; ?>&page=<?php echo $i; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&label=<?php echo urlencode($selectedLabel); ?>"
                                class="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-500 hover:bg-gray-50"><?php echo $i; ?></a>
                         <?php endif; ?>
                     <?php endfor; ?>
                     <?php if ($page < $totalPages): ?>
-                        <a href="?status=<?php echo urlencode($selectedStatus); ?>&date=<?php echo urlencode($selectedDate); ?>&limit=<?php echo $limit; ?>&page=<?php echo $page + 1; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>"
+                        <a href="?status=<?php echo urlencode($selectedStatus); ?>&date=<?php echo urlencode($selectedDate); ?>&limit=<?php echo $limit; ?>&page=<?php echo $page + 1; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&label=<?php echo urlencode($selectedLabel); ?>"
                            class="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-500 hover:bg-gray-50">Next</a>
                     <?php endif; ?>
                 </nav>
@@ -293,7 +321,38 @@
 
         <?php endif; /* end noAssignments check */ ?>
 
+    <!-- Loading overlay (shown on filter submit / pagination click) -->
+    <div id="loadingOverlay"
+         class="fixed inset-0 bg-black bg-opacity-40 hidden flex items-center justify-center z-50"
+         aria-hidden="true" role="status">
+        <div class="w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+    </div>
+
     <script>
+        // ── Loading overlay ──
+        (function() {
+            var overlay = document.getElementById('loadingOverlay');
+            function show() {
+                if (overlay) overlay.classList.remove('hidden');
+            }
+            // Filter form submit
+            document.querySelectorAll('form').forEach(function(f) {
+                f.addEventListener('submit', show);
+            });
+            // Pagination + filter-reset anchors within the main content
+            document.querySelectorAll('nav a, a.bg-red-500, a.bg-gray-500').forEach(function(a) {
+                a.addEventListener('click', function(e) {
+                    // ignore modifier clicks (open-in-new-tab etc.)
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                    show();
+                });
+            });
+            // Hide when navigating back via browser history
+            window.addEventListener('pageshow', function() {
+                if (overlay) overlay.classList.add('hidden');
+            });
+        })();
+
         function toggleProcessed(fileId, action, btn) {
             btn.disabled = true;
             const origText = btn.textContent;

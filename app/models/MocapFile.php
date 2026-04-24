@@ -7,6 +7,7 @@ use PDO;
 class MocapFile {
     private $db;
     private $baseFilter = "subdirectory = 'unreal/CC'";
+    private $broadcastNameCache = [];
 
     public function __construct() {
         $this->db = Database::getInstance()->getConnection();
@@ -105,7 +106,7 @@ class MocapFile {
 
     // ─── Unprocessed files ───
 
-    public function getUnprocessedFilesGroupedByDate($limit = null, $page = 1, $searchTerm = '', ?array $allowedDates = null) {
+    public function getUnprocessedFilesGroupedByDate($limit = null, $page = 1, $searchTerm = '', ?array $allowedDates = null, ?string $labelFilter = null) {
         $offset = $limit ? ($page - 1) * $limit : 0;
 
         // Deduplicate: latest take per base glos (strip _N suffix)
@@ -170,8 +171,14 @@ class MocapFile {
         }
 
         if (!empty($searchTerm)) {
-            $sql .= " AND f1.filename LIKE ?";
-            $params[] = '%' . $searchTerm . '%';
+            [$frag, $sp] = $this->searchPredicate('f1.filename', $searchTerm);
+            $sql .= " AND " . $frag;
+            $params = array_merge($params, $sp);
+        }
+        [$lfrag, $lp] = $this->labelFilterPredicate('f1.filename', $labelFilter);
+        if ($lfrag !== '') {
+            $sql .= " AND " . $lfrag;
+            $params = array_merge($params, $lp);
         }
 
         $sql .= " ORDER BY f1.last_modified DESC";
@@ -197,7 +204,7 @@ class MocapFile {
         return $this->groupByDate($stmt->fetchAll(), 'capture_date');
     }
 
-    public function getUnprocessedFilesCount($searchTerm = '', ?array $allowedDates = null) {
+    public function getUnprocessedFilesCount($searchTerm = '', ?array $allowedDates = null, ?string $labelFilter = null) {
         $sql = "SELECT COUNT(DISTINCT
                     CASE
                         WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
@@ -233,8 +240,14 @@ class MocapFile {
         }
 
         if (!empty($searchTerm)) {
-            $sql .= " AND filename LIKE ?";
-            $params[] = '%' . $searchTerm . '%';
+            [$frag, $sp] = $this->searchPredicate('filename', $searchTerm);
+            $sql .= " AND " . $frag;
+            $params = array_merge($params, $sp);
+        }
+        [$lfrag, $lp] = $this->labelFilterPredicate('filename', $labelFilter);
+        if ($lfrag !== '') {
+            $sql .= " AND " . $lfrag;
+            $params = array_merge($params, $lp);
         }
 
         $stmt = $this->db->prepare($sql);
@@ -244,7 +257,7 @@ class MocapFile {
 
     // ─── Unprocessed by specific date ───
 
-    public function getUnprocessedFilesByDate($date, $limit = null, $page = 1, $searchTerm = '') {
+    public function getUnprocessedFilesByDate($date, $limit = null, $page = 1, $searchTerm = '', ?string $labelFilter = null) {
         $offset = $limit ? ($page - 1) * $limit : 0;
 
         $sql = "SELECT f1.*, SUBSTRING_INDEX(f1.capture_id, '/', 1) AS capture_date
@@ -299,8 +312,14 @@ class MocapFile {
         $params = [$date, $date];
 
         if (!empty($searchTerm)) {
-            $sql .= " AND f1.filename LIKE ?";
-            $params[] = '%' . $searchTerm . '%';
+            [$frag, $sp] = $this->searchPredicate('f1.filename', $searchTerm);
+            $sql .= " AND " . $frag;
+            $params = array_merge($params, $sp);
+        }
+        [$lfrag, $lp] = $this->labelFilterPredicate('f1.filename', $labelFilter);
+        if ($lfrag !== '') {
+            $sql .= " AND " . $lfrag;
+            $params = array_merge($params, $lp);
         }
 
         $sql .= " ORDER BY f1.last_modified DESC";
@@ -319,7 +338,7 @@ class MocapFile {
         return $this->groupByDate($stmt->fetchAll(), 'capture_date');
     }
 
-    public function getUnprocessedFilesCountByDate($date, $searchTerm = '') {
+    public function getUnprocessedFilesCountByDate($date, $searchTerm = '', ?string $labelFilter = null) {
         $sql = "SELECT COUNT(DISTINCT
                     CASE
                         WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
@@ -347,8 +366,14 @@ class MocapFile {
         $params = [$date];
 
         if (!empty($searchTerm)) {
-            $sql .= " AND filename LIKE ?";
-            $params[] = '%' . $searchTerm . '%';
+            [$frag, $sp] = $this->searchPredicate('filename', $searchTerm);
+            $sql .= " AND " . $frag;
+            $params = array_merge($params, $sp);
+        }
+        [$lfrag, $lp] = $this->labelFilterPredicate('filename', $labelFilter);
+        if ($lfrag !== '') {
+            $sql .= " AND " . $lfrag;
+            $params = array_merge($params, $lp);
         }
 
         $stmt = $this->db->prepare($sql);
@@ -358,7 +383,7 @@ class MocapFile {
 
     // ─── Processed files ───
 
-    public function getProcessedFilesGroupedByDate($limit = null, $page = 1, $searchTerm = '', $reviewStatus = 'all', ?array $allowedDates = null) {
+    public function getProcessedFilesGroupedByDate($limit = null, $page = 1, $searchTerm = '', $reviewStatus = 'all', ?array $allowedDates = null, ?string $labelFilter = null) {
         $offset = $limit ? ($page - 1) * $limit : 0;
 
         $sql = "SELECT *, SUBSTRING_INDEX(capture_id, '/', 1) AS capture_date
@@ -377,8 +402,14 @@ class MocapFile {
         }
 
         if (!empty($searchTerm)) {
-            $sql .= " AND filename LIKE ?";
-            $params[] = '%' . $searchTerm . '%';
+            [$frag, $sp] = $this->searchPredicate('filename', $searchTerm);
+            $sql .= " AND " . $frag;
+            $params = array_merge($params, $sp);
+        }
+        [$lfrag, $lp] = $this->labelFilterPredicate('filename', $labelFilter);
+        if ($lfrag !== '') {
+            $sql .= " AND " . $lfrag;
+            $params = array_merge($params, $lp);
         }
 
         if ($reviewStatus !== 'all') {
@@ -402,7 +433,7 @@ class MocapFile {
         return $this->groupByDate($stmt->fetchAll(), 'capture_date');
     }
 
-    public function getProcessedFilesByDate($date, $limit = null, $page = 1, $searchTerm = '') {
+    public function getProcessedFilesByDate($date, $limit = null, $page = 1, $searchTerm = '', ?string $labelFilter = null) {
         $offset = $limit ? ($page - 1) * $limit : 0;
 
         $sql = "SELECT *, SUBSTRING_INDEX(capture_id, '/', 1) AS capture_date
@@ -413,8 +444,14 @@ class MocapFile {
         $params = [$date];
 
         if (!empty($searchTerm)) {
-            $sql .= " AND filename LIKE ?";
-            $params[] = '%' . $searchTerm . '%';
+            [$frag, $sp] = $this->searchPredicate('filename', $searchTerm);
+            $sql .= " AND " . $frag;
+            $params = array_merge($params, $sp);
+        }
+        [$lfrag, $lp] = $this->labelFilterPredicate('filename', $labelFilter);
+        if ($lfrag !== '') {
+            $sql .= " AND " . $lfrag;
+            $params = array_merge($params, $lp);
         }
 
         $sql .= " ORDER BY last_modified DESC";
@@ -433,7 +470,7 @@ class MocapFile {
         return $this->groupByDate($stmt->fetchAll(), 'capture_date');
     }
 
-    public function getProcessedFilesCount($searchTerm = '', $reviewStatus = 'all', ?array $allowedDates = null) {
+    public function getProcessedFilesCount($searchTerm = '', $reviewStatus = 'all', ?array $allowedDates = null, ?string $labelFilter = null) {
         $sql = "SELECT COUNT(*) AS total FROM vicon_files WHERE {$this->baseFilter} AND is_pp = 1";
 
         $params = [];
@@ -448,8 +485,14 @@ class MocapFile {
         }
 
         if (!empty($searchTerm)) {
-            $sql .= " AND filename LIKE ?";
-            $params[] = '%' . $searchTerm . '%';
+            [$frag, $sp] = $this->searchPredicate('filename', $searchTerm);
+            $sql .= " AND " . $frag;
+            $params = array_merge($params, $sp);
+        }
+        [$lfrag, $lp] = $this->labelFilterPredicate('filename', $labelFilter);
+        if ($lfrag !== '') {
+            $sql .= " AND " . $lfrag;
+            $params = array_merge($params, $lp);
         }
 
         if ($reviewStatus !== 'all') {
@@ -462,7 +505,7 @@ class MocapFile {
         return $stmt->fetch()['total'];
     }
 
-    public function getProcessedFilesCountByDate($date, $searchTerm = '') {
+    public function getProcessedFilesCountByDate($date, $searchTerm = '', ?string $labelFilter = null) {
         $sql = "SELECT COUNT(*) AS total FROM vicon_files
                 WHERE {$this->baseFilter} AND is_pp = 1
                 AND SUBSTRING_INDEX(capture_id, '/', 1) = ?";
@@ -470,8 +513,14 @@ class MocapFile {
         $params = [$date];
 
         if (!empty($searchTerm)) {
-            $sql .= " AND filename LIKE ?";
-            $params[] = '%' . $searchTerm . '%';
+            [$frag, $sp] = $this->searchPredicate('filename', $searchTerm);
+            $sql .= " AND " . $frag;
+            $params = array_merge($params, $sp);
+        }
+        [$lfrag, $lp] = $this->labelFilterPredicate('filename', $labelFilter);
+        if ($lfrag !== '') {
+            $sql .= " AND " . $lfrag;
+            $params = array_merge($params, $lp);
         }
 
         $stmt = $this->db->prepare($sql);
@@ -481,7 +530,7 @@ class MocapFile {
 
     // ─── All files ───
 
-    public function getAllFilesGroupedByDate($limit = null, $page = 1, $searchTerm = '', ?array $allowedDates = null) {
+    public function getAllFilesGroupedByDate($limit = null, $page = 1, $searchTerm = '', ?array $allowedDates = null, ?string $labelFilter = null) {
         $offset = $limit ? ($page - 1) * $limit : 0;
 
         $sql = "SELECT f1.*, SUBSTRING_INDEX(f1.capture_id, '/', 1) AS capture_date
@@ -529,8 +578,14 @@ class MocapFile {
         }
 
         if (!empty($searchTerm)) {
-            $sql .= " AND f1.filename LIKE ?";
-            $params[] = '%' . $searchTerm . '%';
+            [$frag, $sp] = $this->searchPredicate('f1.filename', $searchTerm);
+            $sql .= " AND " . $frag;
+            $params = array_merge($params, $sp);
+        }
+        [$lfrag, $lp] = $this->labelFilterPredicate('f1.filename', $labelFilter);
+        if ($lfrag !== '') {
+            $sql .= " AND " . $lfrag;
+            $params = array_merge($params, $lp);
         }
 
         $sql .= " ORDER BY f1.last_modified DESC";
@@ -549,7 +604,7 @@ class MocapFile {
         return $this->groupByDate($stmt->fetchAll(), 'capture_date');
     }
 
-    public function getAllFilesByDate($date, $limit = null, $page = 1, $searchTerm = '') {
+    public function getAllFilesByDate($date, $limit = null, $page = 1, $searchTerm = '', ?string $labelFilter = null) {
         $offset = $limit ? ($page - 1) * $limit : 0;
 
         $sql = "SELECT f1.*, SUBSTRING_INDEX(f1.capture_id, '/', 1) AS capture_date
@@ -590,8 +645,14 @@ class MocapFile {
         $params = [$date, $date];
 
         if (!empty($searchTerm)) {
-            $sql .= " AND f1.filename LIKE ?";
-            $params[] = '%' . $searchTerm . '%';
+            [$frag, $sp] = $this->searchPredicate('f1.filename', $searchTerm);
+            $sql .= " AND " . $frag;
+            $params = array_merge($params, $sp);
+        }
+        [$lfrag, $lp] = $this->labelFilterPredicate('f1.filename', $labelFilter);
+        if ($lfrag !== '') {
+            $sql .= " AND " . $lfrag;
+            $params = array_merge($params, $lp);
         }
 
         $sql .= " ORDER BY f1.last_modified DESC";
@@ -610,7 +671,7 @@ class MocapFile {
         return $this->groupByDate($stmt->fetchAll(), 'capture_date');
     }
 
-    public function getAllFilesCount($searchTerm = '', ?array $allowedDates = null) {
+    public function getAllFilesCount($searchTerm = '', ?array $allowedDates = null, ?string $labelFilter = null) {
         $sql = "SELECT COUNT(DISTINCT
                     CASE
                         WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
@@ -630,8 +691,14 @@ class MocapFile {
         }
 
         if (!empty($searchTerm)) {
-            $sql .= " AND filename LIKE ?";
-            $params[] = '%' . $searchTerm . '%';
+            [$frag, $sp] = $this->searchPredicate('filename', $searchTerm);
+            $sql .= " AND " . $frag;
+            $params = array_merge($params, $sp);
+        }
+        [$lfrag, $lp] = $this->labelFilterPredicate('filename', $labelFilter);
+        if ($lfrag !== '') {
+            $sql .= " AND " . $lfrag;
+            $params = array_merge($params, $lp);
         }
 
         $stmt = $this->db->prepare($sql);
@@ -639,7 +706,7 @@ class MocapFile {
         return $stmt->fetch()['total'];
     }
 
-    public function getAllFilesCountByDate($date, $searchTerm = '') {
+    public function getAllFilesCountByDate($date, $searchTerm = '', ?string $labelFilter = null) {
         $sql = "SELECT COUNT(DISTINCT
                     CASE
                         WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
@@ -652,8 +719,14 @@ class MocapFile {
         $params = [$date];
 
         if (!empty($searchTerm)) {
-            $sql .= " AND filename LIKE ?";
-            $params[] = '%' . $searchTerm . '%';
+            [$frag, $sp] = $this->searchPredicate('filename', $searchTerm);
+            $sql .= " AND " . $frag;
+            $params = array_merge($params, $sp);
+        }
+        [$lfrag, $lp] = $this->labelFilterPredicate('filename', $labelFilter);
+        if ($lfrag !== '') {
+            $sql .= " AND " . $lfrag;
+            $params = array_merge($params, $lp);
         }
 
         $stmt = $this->db->prepare($sql);
@@ -733,7 +806,171 @@ class MocapFile {
         return $result;
     }
 
+    // ─── Labels ───
+
+    /**
+     * Resolve display labels for a set of vicon_files IDs.
+     *
+     * Two paths, both via matched_transcriptions on m_file = broadcast_name + '.wav':
+     *   - zOg='labels' → form_data.labels (JSON array). Only emit if it contains
+     *     'Basiswoordenlijst Amsterdamse Kleuters'.
+     *   - zOg='Zin'    → sentences.label (plain string, e.g. ZNN, HH, Sencity).
+     *
+     * Colors come from the `labels` table when the label name matches; otherwise a fallback.
+     *
+     * Returns: [file_id => [['label' => str, 'color' => str], ...], ...]
+     */
+    public function getLabelsForFiles(array $fileIds): array {
+        if (empty($fileIds)) return [];
+        $ph = implode(',', array_fill(0, count($fileIds), '?'));
+
+        $sql = "
+            SELECT vf.id AS file_id,
+                   CASE
+                     WHEN mt.zOg = 'labels'
+                          AND fd.labels IS NOT NULL
+                          AND JSON_VALID(fd.labels)
+                          AND JSON_CONTAINS(CAST(fd.labels AS JSON), JSON_QUOTE('Basiswoordenlijst Amsterdamse Kleuters'))
+                       THEN 'Basiswoordenlijst Amsterdamse Kleuters'
+                     WHEN mt.zOg = 'Zin'
+                          AND s.label IS NOT NULL AND s.label <> ''
+                       THEN s.label
+                     ELSE NULL
+                   END AS label
+            FROM vicon_files vf
+            LEFT JOIN matched_transcriptions mt
+                   ON mt.m_file = CONCAT(SUBSTRING_INDEX(vf.filename, '_', 2), '.wav')
+            LEFT JOIN form_data fd
+                   ON mt.zOg = 'labels' AND fd.id = CAST(mt.m_transcription AS UNSIGNED)
+            LEFT JOIN sentences s
+                   ON mt.zOg = 'Zin' AND s.ID = CAST(mt.m_transcription AS UNSIGNED)
+            WHERE vf.id IN ($ph)
+        ";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($fileIds);
+
+        // Collect labels per file (dedup)
+        $perFile = [];
+        $labelSet = [];
+        foreach ($stmt->fetchAll() as $row) {
+            if (empty($row['label'])) continue;
+            $fid = $row['file_id'];
+            $lbl = $row['label'];
+            if (!isset($perFile[$fid])) $perFile[$fid] = [];
+            if (in_array($lbl, $perFile[$fid], true)) continue;
+            $perFile[$fid][] = $lbl;
+            $labelSet[$lbl] = true;
+        }
+        if (empty($perFile)) return [];
+
+        // Fetch colors for all referenced label names
+        $names = array_keys($labelSet);
+        $nameHolders = implode(',', array_fill(0, count($names), '?'));
+        $colorStmt = $this->db->prepare("SELECT label, color FROM labels WHERE label IN ($nameHolders)");
+        $colorStmt->execute($names);
+        $colors = [];
+        foreach ($colorStmt->fetchAll() as $r) { $colors[$r['label']] = $r['color']; }
+
+        // Build result with color attached
+        $result = [];
+        foreach ($perFile as $fid => $labels) {
+            $result[$fid] = [];
+            foreach ($labels as $lbl) {
+                $result[$fid][] = [
+                    'label' => $lbl,
+                    'color' => $colors[$lbl] ?? '#6b7280',
+                ];
+            }
+        }
+        return $result;
+    }
+
     // ─── Helpers ───
+
+    /**
+     * Resolve broadcast names (e.g. "M20260113_9959") that are tagged with a
+     * label matching the search term via matched_transcriptions.
+     *
+     * Two paths:
+     *   - zOg='Zin'    → sentences.label LIKE '%term%'  (ZNN, HH, Sencity, …)
+     *   - zOg='labels' → form_data.labels JSON contains 'Basiswoordenlijst …'
+     *                    (only when term is "BAK" case-insensitive)
+     *
+     * Result is cached per-instance so repeated queries in one request
+     * (grouped + count) don't re-query.
+     */
+    private function broadcastNamesMatchingLabel(string $searchTerm): array {
+        $key = strtolower($searchTerm);
+        if (isset($this->broadcastNameCache[$key])) return $this->broadcastNameCache[$key];
+
+        $isBAK = (strcasecmp(trim($searchTerm), 'bak') === 0);
+        $names = [];
+
+        // Sentence label path
+        $sqlZ = "SELECT DISTINCT SUBSTRING_INDEX(mt.m_file, '.', 1) AS bn
+                 FROM matched_transcriptions mt
+                 INNER JOIN sentences s ON s.ID = CAST(mt.m_transcription AS UNSIGNED)
+                 WHERE mt.zOg = 'Zin'
+                   AND mt.m_file IS NOT NULL AND mt.m_file <> ''
+                   AND s.label LIKE ?";
+        $stmt = $this->db->prepare($sqlZ);
+        $stmt->execute(['%' . $searchTerm . '%']);
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $n) { if ($n !== null && $n !== '') $names[$n] = true; }
+
+        // BAK path
+        if ($isBAK) {
+            $sqlB = "SELECT DISTINCT SUBSTRING_INDEX(mt.m_file, '.', 1) AS bn
+                     FROM matched_transcriptions mt
+                     INNER JOIN form_data fd ON fd.id = CAST(mt.m_transcription AS UNSIGNED)
+                     WHERE mt.zOg = 'labels'
+                       AND mt.m_file IS NOT NULL AND mt.m_file <> ''
+                       AND fd.labels IS NOT NULL
+                       AND JSON_VALID(fd.labels)
+                       AND JSON_CONTAINS(CAST(fd.labels AS JSON), JSON_QUOTE('Basiswoordenlijst Amsterdamse Kleuters'))";
+            $stmt = $this->db->prepare($sqlB);
+            $stmt->execute();
+            foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $n) { if ($n !== null && $n !== '') $names[$n] = true; }
+        }
+
+        $list = array_keys($names);
+        $this->broadcastNameCache[$key] = $list;
+        return $list;
+    }
+
+    /** Filename-only search predicate. */
+    private function searchPredicate(string $filenameCol, string $searchTerm): array {
+        return ["$filenameCol LIKE ?", ['%' . $searchTerm . '%']];
+    }
+
+    /**
+     * Build a label-restriction predicate: restricts rows to those whose broadcast
+     * name (filename prefix) is in the set derived from the label filter.
+     *
+     * Supported labelFilter values: 'bak', 'znn', 'hh', 'sencity' (case-insensitive),
+     * anything else (incl. '', 'all') → no restriction.
+     *
+     * Returns a predicate that always evaluates false when the label has no matches
+     * so no rows are returned (UI will show "No files found"), rather than silently
+     * ignoring the filter.
+     *
+     * @return array{0:string,1:array} [sqlFragment (no leading AND), params] or ['', []]
+     */
+    private function labelFilterPredicate(string $filenameCol, ?string $labelFilter): array {
+        if ($labelFilter === null) return ['', []];
+        $lf = strtolower(trim($labelFilter));
+        if ($lf === '' || $lf === 'all') return ['', []];
+
+        // Map dropdown value to the search term used by broadcastNamesMatchingLabel
+        $termMap = ['bak' => 'BAK', 'znn' => 'ZNN', 'hh' => 'HH', 'sencity' => 'Sencity'];
+        if (!isset($termMap[$lf])) return ['', []];
+        $term = $termMap[$lf];
+
+        $names = $this->broadcastNamesMatchingLabel($term);
+        if (empty($names)) return ['1 = 0', []]; // no matches → filter out everything
+
+        $ph = implode(',', array_fill(0, count($names), '?'));
+        return ["SUBSTRING_INDEX($filenameCol, '_', 2) IN ($ph)", $names];
+    }
 
     private function groupByDate(array $results, string $dateField): array {
         $grouped = [];
