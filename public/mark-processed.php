@@ -35,11 +35,15 @@ if (!$file) {
 
 if ($action === 'unprocess') {
     $result = $mocapFile->markAsUnprocessed($id);
+    // Recompute the linked sentence's flag (stays 1 if another take is still processed)
+    $mocapFile->markSentenceUnprocessed($file['filename']);
     $logType = 'mark_unprocessed';
     $message = 'Reverted to unprocessed';
     $newStatus = 'unprocessed';
 } else {
     $result = $mocapFile->markAsProcessed($id, $file['filename']);
+    // Flag the linked sentence (if any) as post-processed
+    $mocapFile->markSentencePostProcessed($file['filename']);
     $logType = 'mark_processed';
     $message = 'Marked as processed';
     $newStatus = 'processed';
