@@ -161,6 +161,12 @@
                                             <?php endif; ?>
                                             <td class="py-3 font-mono text-sm">
                                                 <?php echo htmlspecialchars($file['filename']); ?>
+                                                <?php if (!empty($fileGlosses[$file['id']])): ?>
+                                                    <div class="mt-1 text-indigo-700 font-semibold text-sm break-words max-w-[260px]"
+                                                         title="<?php echo htmlspecialchars($fileGlosses[$file['id']]); ?>">
+                                                        <?php echo htmlspecialchars($fileGlosses[$file['id']]); ?>
+                                                    </div>
+                                                <?php endif; ?>
                                                 <?php if (!empty($fileLabels[$file['id']])): ?>
                                                     <div class="mt-1 flex flex-wrap gap-1">
                                                         <?php foreach ($fileLabels[$file['id']] as $lbl): ?>
@@ -249,10 +255,27 @@
                                             <td class="py-3">
                                                 <?php
                                                     $baseGlos = preg_replace('/\\.fbx$/i', '', $file['filename']);
-                                                    $glbUrl = !empty($file['glb_path']) ? str_replace('/web/', '/', $file['glb_path']) : '';
-                                                    $rightVideo = $rightVideos[$file['capture_id']] ?? '';
-                                                    $videoParam = $rightVideo ? '&video=' . urlencode('/gebarenoverleg_media/razerFiles/' . $rightVideo) : '';
-                                                    $previewUrl = $glbUrl ? '/animMIDI/babyloncc/dist/?anim=' . urlencode($glbUrl) . $videoParam : '';
+                                                    // glb_path points at /fbx/<name>.glb — the full glassesGuy/Mixamo
+                                                    // export, whose bone names (Hips/Spine/Neck) DON'T match the CC
+                                                    // preview avatar, so retargeting yields 0 matches and the avatar
+                                                    // sits frozen. The retargetable animation is the CC export at
+                                                    // /fbx/CC/<name>.glb. Prefer it; fall back to glb_path if absent.
+                                                    $glbDisk = !empty($file['glb_path']) ? $file['glb_path'] : '';
+                                                    $ccDisk  = $glbDisk ? preg_replace('#/fbx/(?!CC/)#', '/fbx/CC/', $glbDisk, 1) : '';
+                                                    $animDisk = ($ccDisk && is_file($ccDisk)) ? $ccDisk : $glbDisk;
+                                                    $glbUrl = $animDisk ? str_replace('/web/', '/', $animDisk) : '';
+                                                    $videoUrl = $previewVideos[$file['id']] ?? '';
+                                                    $videoParam = $videoUrl ? '&video=' . urlencode($videoUrl) : '';
+                                                    // Cache-bust on the viewer's mtime: the dist/ viewer is served
+                                                    // without a Cache-Control header, so browsers heuristically cache
+                                                    // it and the iframe can keep serving a stale build. Tying ?v= to
+                                                    // index.html's mtime forces a fresh load whenever the viewer changes.
+                                                    static $viewerVer = null;
+                                                    if ($viewerVer === null) {
+                                                        $viewerVer = @filemtime(__DIR__ . '/../../babyloncc/dist/index.html') ?: '0';
+                                                    }
+                                                    $verParam = '&v=' . $viewerVer;
+                                                    $previewUrl = $glbUrl ? '/animMIDI/babyloncc/dist/?anim=' . urlencode($glbUrl) . $videoParam . $verParam : '';
                                                 ?>
                                                 <?php if ($file['is_pp'] == 1): ?>
                                                     <a href="/animMIDI/babyloncc/dist/compare.html?file=<?php echo urlencode($baseGlos); ?>"
@@ -270,7 +293,7 @@
                                                 </button>
                                                 <?php if ($previewUrl): ?>
                                                     <br>
-                                                    <button type="button" onclick="openPreview('<?php echo $previewUrl; ?>', '<?php echo htmlspecialchars($file['filename']); ?>')" class="text-orange-600 hover:text-orange-800 text-sm bg-transparent border-0 cursor-pointer p-0">Preview Animation</button>
+                                                    <button type="button" onclick="openPreview('<?php echo $previewUrl; ?>', '<?php echo htmlspecialchars($file['filename']); ?>', <?php echo htmlspecialchars(json_encode($fileGlosses[$file['id']] ?? ''), ENT_QUOTES); ?>)" class="text-orange-600 hover:text-orange-800 text-sm bg-transparent border-0 cursor-pointer p-0">Preview Animation</button>
                                                 <?php endif; ?>
                                             </td>
                                         </tr>
@@ -517,14 +540,15 @@
 
     <script>
     // Preview sidebar
-    function openPreview(url, filename) {
+    function openPreview(url, filename, glos) {
         const sidebar = document.getElementById('previewSidebar');
         const handle = document.getElementById('resizeHandle');
         const frame = document.getElementById('previewFrame');
         const title = document.getElementById('previewTitle');
 
         frame.src = url;
-        title.textContent = filename;
+        title.textContent = glos ? (filename + ' — ' + glos) : filename;
+        title.title = title.textContent;
         sidebar.style.display = 'flex';
         handle.style.display = 'block';
     }
