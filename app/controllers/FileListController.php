@@ -66,25 +66,22 @@ class FileListController {
         // Calculate pagination
         $totalPages = $totalFiles > 0 ? ceil($totalFiles / $limit) : 0;
 
-        // Collect all visible file IDs for activity lookup
+        // Collect all visible file rows / IDs for lookups
+        $allFiles = [];
         $allFileIds = [];
         foreach ($filesGroupedByDate as $files) {
             foreach ($files as $f) {
+                $allFiles[] = $f;
                 $allFileIds[] = $f['id'];
             }
         }
         $fileActivities = $this->mocapFileModel->getLatestActivity($allFileIds);
         $downloadedFiles = $this->mocapFileModel->getDownloadedFileIds($allFileIds);
         $fileLabels = $this->mocapFileModel->getLabelsForFiles($allFileIds);
+        $fileGlosses = $this->mocapFileModel->getGlossesForFiles($allFileIds);
 
-        // Collect capture_ids for RIGHT video lookup
-        $captureIds = [];
-        foreach ($filesGroupedByDate as $files) {
-            foreach ($files as $f) {
-                if (!empty($f['capture_id'])) $captureIds[] = $f['capture_id'];
-            }
-        }
-        $rightVideos = $this->mocapFileModel->getRightVideos(array_unique($captureIds));
+        // Preview video per file: Blackmagic MP4 preferred, RIGHT MKV fallback
+        $previewVideos = $this->mocapFileModel->getPreviewVideos($allFiles);
 
         // Pass to view
         $noAssignments = ($allowedDates !== null && empty($allowedDates));

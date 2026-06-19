@@ -9,8 +9,24 @@ class MocapFile {
     private $baseFilter = "subdirectory = 'unreal/CC'";
     private $broadcastNameCache = [];
 
+    /**
+     * Capture dates (YYYY-MM-DD) to hide everywhere in the app.
+     * Use for sessions that get re-imported by accident — a sync keeps
+     * re-creating their vicon_files rows, so we filter them out at read time
+     * instead of fighting the importer. Add a date string to block it.
+     */
+    private const BLOCKED_DATES = ['2026-05-22'];
+
     public function __construct() {
         $this->db = Database::getInstance()->getConnection();
+
+        if (!empty(self::BLOCKED_DATES)) {
+            $quoted = implode(',', array_map(
+                fn($d) => $this->db->quote($d),
+                self::BLOCKED_DATES
+            ));
+            $this->baseFilter .= " AND SUBSTRING_INDEX(capture_id, '/', 1) NOT IN ($quoted)";
+        }
     }
 
     public function getFileById($id) {
@@ -48,6 +64,120 @@ class MocapFile {
         $sql = "UPDATE vicon_files SET is_pp = 0, filename_pp = NULL, datetime_pp = NULL WHERE id = ?";
         $stmt = $this->db->prepare($sql);
         return $stmt->execute([$id]);
+    }
+
+    /**
+     * Flag the linked sentence as post-processed (sentences.mcp_status_postprocessing = 1)
+     * for a capture file, via matched_transcriptions:
+     *   broadcast name (filename's first two '_' segments) -> mt.m_file = '<broadcast>.wav'
+     *   -> mt.m_transcription -> sentences.ID
+     * Only zOg='Zin' rows link to sentences (glos/labels/extern point at form_data),
+     * so the update is restricted to those.
+     *
+     * @return int number of sentences rows updated
+     */
+    public function markSentencePostProcessed(string $filename): int {
+        $broadcast = implode('_', array_slice(explode('_', $filename), 0, 2));
+        if ($broadcast === '') return 0;
+        $mFile = $broadcast . '.wav';
+
+        $sql = "UPDATE sentences s
+                JOIN matched_transcriptions mt
+                  ON LOWER(mt.zOg) = 'zin'
+                 AND mt.m_transcription REGEXP '^[0-9]+$'
+                 AND s.ID = CAST(mt.m_transcription AS UNSIGNED)
+                SET s.mcp_status_postprocessing = 1
+                WHERE mt.m_file = ?";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$mFile]);
+        return $stmt->rowCount();
+    }
+
+    /**
+     * SET clause that recomputes sentences.mcp_status_postprocessing from the live
+     * capture state: 1 if ANY CC take of ANY broadcast linked to the sentence is
+     * is_pp=1, otherwise NULL (not-yet-post-processed sentences are left unmarked).
+     * Correlated on s.ID so it's correct even when a sentence is linked to multiple
+     * broadcasts.
+     */
+    private const SENTENCE_PP_RECOMPUTE = "
+        SET s.mcp_status_postprocessing = (
+            CASE WHEN EXISTS (
+                SELECT 1
+                FROM matched_transcriptions mt2
+                JOIN vicon_files vf
+                  ON vf.subdirectory = 'unreal/CC' AND vf.is_pp = 1
+                 AND CONCAT(SUBSTRING_INDEX(vf.filename, '_', 2), '.wav') = mt2.m_file
+                WHERE LOWER(mt2.zOg) = 'zin'
+                  AND mt2.m_transcription REGEXP '^[0-9]+$'
+                  AND CAST(mt2.m_transcription AS UNSIGNED) = s.ID
+            ) THEN 1 ELSE NULL END
+        )";
+
+    /**
+     * Recompute the post-processed flag for the sentence linked to a reverted file.
+     * Leaves it at 1 if another take of the broadcast is still processed.
+     *
+     * @return int number of sentences rows updated
+     */
+    public function markSentenceUnprocessed(string $filename): int {
+        $broadcast = implode('_', array_slice(explode('_', $filename), 0, 2));
+        if ($broadcast === '') return 0;
+        $mFile = $broadcast . '.wav';
+
+        $sql = "UPDATE sentences s
+                JOIN matched_transcriptions mt
+                  ON LOWER(mt.zOg) = 'zin'
+                 AND mt.m_transcription REGEXP '^[0-9]+$'
+                 AND s.ID = CAST(mt.m_transcription AS UNSIGNED)
+                " . self::SENTENCE_PP_RECOMPUTE . "
+                WHERE mt.m_file = ?";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$mFile]);
+        return $stmt->rowCount();
+    }
+
+    /**
+     * One-off sync: recompute sentences.mcp_status_postprocessing for every
+     * Zin-linked sentence from the current vicon_files post-processed state.
+     *
+     * @return int number of sentences rows updated
+     */
+    public function syncAllSentencePostProcessed(): array {
+        // Distinct broadcasts that have at least one post-processed CC take.
+        $this->db->exec("DROP TEMPORARY TABLE IF EXISTS _pp_bc");
+        $this->db->exec("CREATE TEMPORARY TABLE _pp_bc (mfile VARCHAR(255) PRIMARY KEY)");
+        $this->db->exec("INSERT IGNORE INTO _pp_bc (mfile)
+            SELECT DISTINCT CONCAT(SUBSTRING_INDEX(filename, '_', 2), '.wav')
+            FROM vicon_files WHERE subdirectory = 'unreal/CC' AND is_pp = 1");
+
+        // Sentence IDs linked (zin) to a post-processed broadcast → set 1.
+        $this->db->exec("DROP TEMPORARY TABLE IF EXISTS _pp_sent");
+        $this->db->exec("CREATE TEMPORARY TABLE _pp_sent (sid INT PRIMARY KEY)");
+        $this->db->exec("INSERT IGNORE INTO _pp_sent (sid)
+            SELECT DISTINCT CAST(mt.m_transcription AS UNSIGNED)
+            FROM matched_transcriptions mt
+            JOIN _pp_bc p ON p.mfile = mt.m_file
+            WHERE LOWER(mt.zOg) = 'zin' AND mt.m_transcription REGEXP '^[0-9]+$'");
+
+        // All zin-linked sentence IDs.
+        $this->db->exec("DROP TEMPORARY TABLE IF EXISTS _all_sent");
+        $this->db->exec("CREATE TEMPORARY TABLE _all_sent (sid INT PRIMARY KEY)");
+        $this->db->exec("INSERT IGNORE INTO _all_sent (sid)
+            SELECT DISTINCT CAST(mt.m_transcription AS UNSIGNED)
+            FROM matched_transcriptions mt
+            WHERE LOWER(mt.zOg) = 'zin' AND mt.m_transcription REGEXP '^[0-9]+$'");
+
+        $set1 = $this->db->exec("UPDATE sentences s JOIN _pp_sent p ON p.sid = s.ID
+            SET s.mcp_status_postprocessing = 1");
+        // Not-yet-post-processed sentences are left unmarked (NULL).
+        $cleared = $this->db->exec("UPDATE sentences s
+            JOIN _all_sent a ON a.sid = s.ID
+            LEFT JOIN _pp_sent p ON p.sid = s.ID
+            SET s.mcp_status_postprocessing = NULL
+            WHERE p.sid IS NULL AND s.mcp_status_postprocessing IS NOT NULL");
+
+        return ['set_to_1' => (int)$set1, 'cleared_to_null' => (int)$cleared];
     }
 
     public function updateReviewStatus($id, $status) {
@@ -181,7 +311,7 @@ class MocapFile {
             $params = array_merge($params, $lp);
         }
 
-        $sql .= " ORDER BY f1.last_modified DESC";
+        $sql .= " ORDER BY f1.last_modified DESC, f1.id DESC";
 
         if ($limit) {
             $sql .= " LIMIT ? OFFSET ?";
@@ -322,7 +452,7 @@ class MocapFile {
             $params = array_merge($params, $lp);
         }
 
-        $sql .= " ORDER BY f1.last_modified DESC";
+        $sql .= " ORDER BY f1.last_modified DESC, f1.id DESC";
 
         if ($limit) {
             $sql .= " LIMIT ? OFFSET ?";
@@ -417,7 +547,7 @@ class MocapFile {
             $params[] = $reviewStatus;
         }
 
-        $sql .= " ORDER BY last_modified DESC";
+        $sql .= " ORDER BY last_modified DESC, id DESC";
 
         if ($limit) {
             $sql .= " LIMIT ? OFFSET ?";
@@ -454,7 +584,7 @@ class MocapFile {
             $params = array_merge($params, $lp);
         }
 
-        $sql .= " ORDER BY last_modified DESC";
+        $sql .= " ORDER BY last_modified DESC, id DESC";
 
         if ($limit) {
             $sql .= " LIMIT ? OFFSET ?";
@@ -588,7 +718,7 @@ class MocapFile {
             $params = array_merge($params, $lp);
         }
 
-        $sql .= " ORDER BY f1.last_modified DESC";
+        $sql .= " ORDER BY f1.last_modified DESC, f1.id DESC";
 
         if ($limit) {
             $sql .= " LIMIT ? OFFSET ?";
@@ -655,7 +785,7 @@ class MocapFile {
             $params = array_merge($params, $lp);
         }
 
-        $sql .= " ORDER BY f1.last_modified DESC";
+        $sql .= " ORDER BY f1.last_modified DESC, f1.id DESC";
 
         if ($limit) {
             $sql .= " LIMIT ? OFFSET ?";
@@ -748,6 +878,39 @@ class MocapFile {
         $result = [];
         foreach ($stmt->fetchAll() as $row) {
             $result[$row['capture_id']] = $row['filename'];
+        }
+        return $result;
+    }
+
+    /**
+     * Resolve the preview-video web URL for each file: prefer the Blackmagic MP4
+     * (same basename as the FBX, inside the capture's date folder), fall back to
+     * the RIGHT MKV. Only files with an existing video are returned.
+     *
+     * @param array $files rows with id, filename, capture_id, capture_date
+     * @return array [file_id => web URL]
+     */
+    public function getPreviewVideos(array $files): array {
+        if (empty($files)) return [];
+
+        $bmDisk = '/web/gebarenoverleg_media/studioFiles/blackmagic_files/';
+        $bmWeb  = '/gebarenoverleg_media/studioFiles/blackmagic_files/';
+
+        // MKV fallback, keyed by capture_id
+        $captureIds = [];
+        foreach ($files as $f) { if (!empty($f['capture_id'])) $captureIds[] = $f['capture_id']; }
+        $mkvByCapture = $this->getRightVideos(array_unique($captureIds));
+
+        $result = [];
+        foreach ($files as $f) {
+            $date = preg_replace('/[^0-9-]/', '', (string)($f['capture_date'] ?? ''));
+            $mp4Name = preg_replace('/\\.fbx$/i', '.mp4', basename($f['filename']));
+
+            if ($date !== '' && $mp4Name !== '' && is_file($bmDisk . $date . '/' . $mp4Name)) {
+                $result[$f['id']] = $bmWeb . $date . '/' . $mp4Name;
+            } elseif (!empty($mkvByCapture[$f['capture_id']])) {
+                $result[$f['id']] = '/gebarenoverleg_media/razerFiles/' . $mkvByCapture[$f['capture_id']];
+            }
         }
         return $result;
     }
@@ -880,6 +1043,59 @@ class MocapFile {
                     'label' => $lbl,
                     'color' => $colors[$lbl] ?? '#6b7280',
                 ];
+            }
+        }
+        return $result;
+    }
+
+    /**
+     * Resolve the glos to display under each filename, via matched_transcriptions
+     * on m_file = broadcast_name + '.wav' (broadcast = first two filename segments).
+     *
+     *   - zOg in (Glos|labels|extern) → form_data.glos (a single glos word)
+     *   - zOg = Zin                   → sentences.zinString (the sentence text)
+     *
+     * Returns: [file_id => "GLOS …", ...] (only files that resolved a value).
+     */
+    public function getGlossesForFiles(array $fileIds): array {
+        if (empty($fileIds)) return [];
+        $ph = implode(',', array_fill(0, count($fileIds), '?'));
+
+        $sql = "
+            SELECT vf.id AS file_id,
+                   LOWER(mt.zOg) AS zog,
+                   fd.glos AS fd_glos,
+                   s.zinString AS s_glosses
+            FROM vicon_files vf
+            LEFT JOIN matched_transcriptions mt
+                   ON mt.m_file = CONCAT(SUBSTRING_INDEX(vf.filename, '_', 2), '.wav')
+            LEFT JOIN form_data fd
+                   ON LOWER(mt.zOg) IN ('glos','labels','extern')
+                  AND fd.id = CAST(mt.m_transcription AS UNSIGNED)
+            LEFT JOIN sentences s
+                   ON LOWER(mt.zOg) = 'zin'
+                  AND s.ID = CAST(mt.m_transcription AS UNSIGNED)
+            WHERE vf.id IN ($ph)
+        ";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($fileIds);
+
+        $result = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $fid = $row['file_id'];
+            if (isset($result[$fid])) continue; // first match per file wins
+
+            $zog = $row['zog'];
+            $value = null;
+            if (in_array($zog, ['glos', 'labels', 'extern'], true)) {
+                $value = $row['fd_glos'];
+            } elseif ($zog === 'zin') {
+                $value = $row['s_glosses'];
+            }
+
+            $value = is_string($value) ? trim($value) : '';
+            if ($value !== '') {
+                $result[$fid] = $value;
             }
         }
         return $result;
