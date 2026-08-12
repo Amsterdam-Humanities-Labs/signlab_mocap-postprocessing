@@ -3,6 +3,7 @@ namespace App\controllers;
 
 use App\models\MocapFile;
 use App\config\Database;
+use App\services\EafLocator;
 use PDO;
 use ZipArchive;
 
@@ -263,6 +264,120 @@ class DownloadController {
 
         $this->deleteDirectory($tempDir);
         exit;
+    }
+
+    /**
+     * ZIP the ELAN annotation file and sidecar SRTs for each selected take.
+     *
+     * Only takes whose two MCP gates both read "Klaar" are included. The check is
+     * repeated here even though the file list badges it, because the client
+     * controls which IDs it posts. Everything excluded is named in a manifest
+     * inside the ZIP, so an unexpectedly small download is explainable.
+     */
+    public function downloadEaf($fileIds, array $currentUser = []) {
+        $files = $this->mocapFileModel->getFilesByIds($fileIds);
+
+        if (empty($files)) {
+            header('HTTP/1.0 404 Not Found');
+            echo "No files found";
+            exit;
+        }
+
+        $statuses = $this->mocapFileModel->getMcpStatusForFiles(
+            array_map(static fn($f) => (int)$f['id'], $files)
+        );
+        $locator = new EafLocator();
+
+        $tempDir = sys_get_temp_dir() . '/eaf_' . uniqid();
+        mkdir($tempDir);
+
+        $stamp = date('Y-m-d_H-i-s');
+        $zipPath = $tempDir . '/eaf_files_' . $stamp . '.zip';
+        $zip = new ZipArchive();
+
+        if ($zip->open($zipPath, ZipArchive::CREATE) !== true) {
+            $this->deleteDirectory($tempDir);
+            header('HTTP/1.0 500 Internal Server Error');
+            echo "Failed to create ZIP file";
+            exit;
+        }
+
+        $skipped = [];
+        $missing = [];
+        $included = [];
+
+        foreach ($files as $file) {
+            $status = $statuses[(int)$file['id']] ?? ['pp' => null, 'ta' => null, 'klaar' => false];
+            $take = preg_replace('/\.fbx$/i', '', $this->safeName($file['filename']));
+
+            if ($take === '') {
+                $missing[] = (string)$file['filename'];
+                continue;
+            }
+
+            if (!$status['klaar']) {
+                $skipped[] = sprintf(
+                    '%s — postprocessing: %s, tijd annotatie: %s',
+                    $take,
+                    $this->describePostprocessing($status['pp']),
+                    $status['ta'] === null || $status['ta'] === '' ? '(leeg)' : $status['ta']
+                );
+                continue;
+            }
+
+            $paths = $locator->filesForTake($take);
+            if (empty($paths)) {
+                $missing[] = $take;
+                continue;
+            }
+
+            foreach ($paths as $path) {
+                $zip->addFile($path, $take . '/' . basename($path));
+            }
+            $included[] = $file;
+        }
+
+        if (!empty($skipped)) {
+            $zip->addFromString(
+                'SKIPPED_NOT_KLAAR.txt',
+                "These takes were left out because MCP postprocessing and/or tijd annotatie\n"
+                . "is not set to Klaar in zinnen.html:\n\n"
+                . implode("\n", $skipped) . "\n"
+            );
+        }
+
+        if (!empty($missing)) {
+            $zip->addFromString(
+                'MISSING_EAF.txt',
+                "No take-level .eaf was found in /web/zin/eaf/zin/ for these takes.\n"
+                . "(The broadcast-level .eaf is not used as a fallback: it covers the whole\n"
+                . "broadcast and is not time-aligned to an individual take.)\n\n"
+                . implode("\n", $missing) . "\n"
+            );
+        }
+
+        $zip->close();
+
+        if (!empty($currentUser['username'])) {
+            foreach ($included as $file) {
+                $this->logDownload($currentUser['username'], (int)$file['id'], $file['filename'], 'eaf');
+            }
+        }
+
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="eaf_files_' . $stamp . '.zip"');
+        header('Content-Length: ' . filesize($zipPath));
+        readfile($zipPath);
+
+        $this->deleteDirectory($tempDir);
+        exit;
+    }
+
+    /** Render the postprocessing status value as the label zinnen.html shows for it. */
+    private function describePostprocessing(?string $pp): string {
+        if ($pp === '1') return 'Klaar';
+        if ($pp === '2') return 'Check nodig';
+        return ($pp === null || $pp === '') ? '(leeg)' : $pp;
     }
 
     private function downloadFileToTemp($url, $filename) {
