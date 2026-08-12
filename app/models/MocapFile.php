@@ -893,8 +893,11 @@ class MocapFile {
     public function getPreviewVideos(array $files): array {
         if (empty($files)) return [];
 
-        $bmDisk = '/web/gebarenoverleg_media/blackmagic_filesMini/';
-        $bmWeb  = '/gebarenoverleg_media/blackmagic_filesMini/';
+        // NOTE: "blackamgic" (m/a transposed) is the actual directory name on disk —
+        // a symlink to /mnt/bigstorage/blackmagic_filesMini/. Matching the misspelling
+        // here is deliberate; do not "fix" it back to "blackmagic" or the lookup breaks.
+        $bmDisk = '/web/gebarenoverleg_media/blackamgic_filesMini/';
+        $bmWeb  = '/gebarenoverleg_media/blackamgic_filesMini/';
 
         // MKV fallback, keyed by capture_id
         $captureIds = [];
