@@ -28,6 +28,7 @@
             </div>
         <?php else: ?>
 
+        <?php $selectedMcp = $_GET['mcp'] ?? 'all'; ?>
         <div class="mb-6 space-y-4">
             <!-- Filter Controls -->
             <div class="bg-white rounded-lg shadow p-4">
@@ -66,6 +67,12 @@
                             <option value="znn" <?php echo $selectedLabel === 'znn' ? 'selected' : ''; ?>>ZNN</option>
                             <option value="hh"  <?php echo $selectedLabel === 'hh'  ? 'selected' : ''; ?>>HH</option>
                             <option value="sencity" <?php echo $selectedLabel === 'sencity' ? 'selected' : ''; ?>>Sencity</option>
+                        </select>
+                    </div>
+                    <div>
+                        <select name="mcp" class="border rounded px-3 py-2">
+                            <option value="all" <?php echo $selectedMcp === 'all' ? 'selected' : ''; ?>>Alle MCP statussen</option>
+                            <option value="klaar_eaf" <?php echo $selectedMcp === 'klaar_eaf' ? 'selected' : ''; ?>>MCP Klaar + EAF beschikbaar</option>
                         </select>
                     </div>
                     <div>
@@ -334,7 +341,7 @@
             <div class="mt-6 flex justify-center">
                 <nav class="flex space-x-2">
                     <?php if ($page > 1): ?>
-                        <a href="?status=<?php echo urlencode($selectedStatus); ?>&date=<?php echo urlencode($selectedDate); ?>&limit=<?php echo $limit; ?>&page=<?php echo $page - 1; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&label=<?php echo urlencode($selectedLabel); ?>"
+                        <a href="?status=<?php echo urlencode($selectedStatus); ?>&date=<?php echo urlencode($selectedDate); ?>&limit=<?php echo $limit; ?>&page=<?php echo $page - 1; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&label=<?php echo urlencode($selectedLabel); ?>&mcp=<?php echo urlencode($selectedMcp); ?>"
                            class="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-500 hover:bg-gray-50">Previous</a>
                     <?php endif; ?>
                     <?php
@@ -344,12 +351,12 @@
                         <?php if ($i == $page): ?>
                             <span class="px-3 py-2 bg-blue-500 text-white rounded-md text-sm font-medium"><?php echo $i; ?></span>
                         <?php else: ?>
-                            <a href="?status=<?php echo urlencode($selectedStatus); ?>&date=<?php echo urlencode($selectedDate); ?>&limit=<?php echo $limit; ?>&page=<?php echo $i; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&label=<?php echo urlencode($selectedLabel); ?>"
+                            <a href="?status=<?php echo urlencode($selectedStatus); ?>&date=<?php echo urlencode($selectedDate); ?>&limit=<?php echo $limit; ?>&page=<?php echo $i; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&label=<?php echo urlencode($selectedLabel); ?>&mcp=<?php echo urlencode($selectedMcp); ?>"
                                class="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-500 hover:bg-gray-50"><?php echo $i; ?></a>
                         <?php endif; ?>
                     <?php endfor; ?>
                     <?php if ($page < $totalPages): ?>
-                        <a href="?status=<?php echo urlencode($selectedStatus); ?>&date=<?php echo urlencode($selectedDate); ?>&limit=<?php echo $limit; ?>&page=<?php echo $page + 1; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&label=<?php echo urlencode($selectedLabel); ?>"
+                        <a href="?status=<?php echo urlencode($selectedStatus); ?>&date=<?php echo urlencode($selectedDate); ?>&limit=<?php echo $limit; ?>&page=<?php echo $page + 1; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&label=<?php echo urlencode($selectedLabel); ?>&mcp=<?php echo urlencode($selectedMcp); ?>"
                            class="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-500 hover:bg-gray-50">Next</a>
                     <?php endif; ?>
                 </nav>
