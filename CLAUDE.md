@@ -41,7 +41,7 @@ Capture date extracted from `vicon_files.capture_id` via `SUBSTRING_INDEX(captur
 │   ├── index.php             # File list (requires auth)
 │   ├── upload.php            # Upload handler (requires auth)
 │   ├── download.php          # Download handler (bundles FBX + MKV ZIP)
-│   ├── download-eaf.php      # Batch EAF/SRT download, gated on MCP Klaar status
+│   ├── download-eaf.php      # Batch per-take bundle (EAF/SRT + PP FBX/GLB + reference video), capped at 100 takes
 │   ├── review-status.php     # Review status API
 │   ├── mark-processed.php    # Toggle processed status API
 │   ├── update-comment.php    # Comment save API
@@ -61,7 +61,9 @@ Capture date extracted from `vicon_files.capture_id` via `SUBSTRING_INDEX(captur
 │   │   ├── Assignment.php    # Capture date assignments
 │   │   └── Stats.php         # Activity statistics
 │   ├── services/
-│   │   └── EafLocator.php    # Locates take-level .eaf/.srt files for EAF download
+│   │   ├── EafLocator.php    # Locates take-level .eaf/.srt files for EAF download
+│   │   ├── PathSafety.php    # Shared path sanitisation/containment trait
+│   │   └── TakeBundleLocator.php  # Locates PP FBX/GLB + reference video per take
 │   └── views/
 │       ├── file-list.php     # Main file browser with sidebar preview
 │       ├── upload-form.php   # Drag-and-drop upload
@@ -144,3 +146,4 @@ mysql -u user -p admin_gebarenoverleg < migrations/006_download_logs_eaf_type.sq
 - The `.htaccess` has an exception for `babyloncc/dist/` to bypass the `public/` rewrite
 - BabylonCC uses CDN — no npm/Vite build needed. Just edit HTML and refresh.
 - Post-processed animations from Unreal have reduced rotation ranges (~3x smaller) — the compare tool compensates with per-bone amplification
+- The file list's "MCP Klaar+EAF" filter shows only takes that are workflow-complete and have a take-level annotation on disk (via `EafLocator::hasEaf()`)
