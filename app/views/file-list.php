@@ -70,7 +70,8 @@
                         </select>
                     </div>
                     <div>
-                        <select name="mcp" class="border rounded px-3 py-2">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">MCP Status</label>
+                        <select name="mcp" class="border border-gray-300 rounded-md px-3 py-2 text-sm">
                             <option value="all" <?php echo $selectedMcp === 'all' ? 'selected' : ''; ?>>Alle MCP statussen</option>
                             <option value="klaar_eaf" <?php echo $selectedMcp === 'klaar_eaf' ? 'selected' : ''; ?>>MCP Klaar + EAF beschikbaar</option>
                         </select>
