@@ -180,10 +180,14 @@
                                                     </div>
                                                 <?php endif; ?>
                                                 <?php
+                                                    $hasMcpEntry = array_key_exists($file['id'], $fileMcpStatus);
                                                     $mcp = $fileMcpStatus[$file['id']] ?? ['pp' => null, 'ta' => null, 'klaar' => false];
-                                                    $ppLabel = $mcp['pp'] === '1' ? 'Klaar' : ($mcp['pp'] === '2' ? 'Check nodig' : ($mcp['pp'] === null || $mcp['pp'] === '' ? 'leeg' : $mcp['pp']));
+                                                    $ppLabel = \App\models\MocapFile::describePostprocessing($mcp['pp']);
                                                     $taLabel = ($mcp['ta'] === null || $mcp['ta'] === '') ? 'leeg' : $mcp['ta'];
-                                                    if ($mcp['klaar']) {
+                                                    if (!$hasMcpEntry) {
+                                                        $mcpText  = 'geen zin gekoppeld';
+                                                        $mcpClass = 'bg-orange-100 text-orange-700';
+                                                    } elseif ($mcp['klaar']) {
                                                         $mcpText  = 'MCP Klaar';
                                                         $mcpClass = 'bg-green-100 text-green-800';
                                                     } else {
@@ -243,6 +247,7 @@
                                                         'original' => 'downloaded',
                                                         'processed' => 'downloaded',
                                                         'bulk' => 'downloaded',
+                                                        'eaf' => 'downloaded (eaf)',
                                                         'upload' => 'uploaded',
                                                         'mark_processed' => 'processed',
                                                         'mark_unprocessed' => 'reverted',

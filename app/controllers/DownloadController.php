@@ -249,7 +249,13 @@ class DownloadController {
             );
         }
 
-        $zip->close();
+        if (!$zip->close()) {
+            $statusString = $zip->getStatusString();
+            $this->deleteDirectory($tempDir);
+            header('HTTP/1.0 500 Internal Server Error');
+            echo "Failed to finalize ZIP file: " . $statusString;
+            exit;
+        }
 
         if (!empty($currentUser['username'])) {
             foreach ($files as $file) {
@@ -319,7 +325,7 @@ class DownloadController {
                 $skipped[] = sprintf(
                     '%s — postprocessing: %s, tijd annotatie: %s',
                     $take,
-                    $this->describePostprocessing($status['pp']),
+                    MocapFile::describePostprocessing($status['pp']),
                     $status['ta'] === null || $status['ta'] === '' ? '(leeg)' : $status['ta']
                 );
                 continue;
@@ -378,7 +384,13 @@ class DownloadController {
             );
         }
 
-        $zip->close();
+        if (!$zip->close()) {
+            $statusString = $zip->getStatusString();
+            $this->deleteDirectory($tempDir);
+            header('HTTP/1.0 500 Internal Server Error');
+            echo "Failed to finalize ZIP file: " . $statusString;
+            exit;
+        }
 
         if (!empty($currentUser['username'])) {
             foreach ($included as $file) {
@@ -393,13 +405,6 @@ class DownloadController {
 
         $this->deleteDirectory($tempDir);
         exit;
-    }
-
-    /** Render the postprocessing status value as the label zinnen.html shows for it. */
-    private function describePostprocessing(?string $pp): string {
-        if ($pp === '1') return 'Klaar';
-        if ($pp === '2') return 'Check nodig';
-        return ($pp === null || $pp === '') ? '(leeg)' : $pp;
     }
 
     private function downloadFileToTemp($url, $filename) {
