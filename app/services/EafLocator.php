@@ -48,6 +48,20 @@ class EafLocator {
     }
 
     /**
+     * Cheap existence check for a take's annotation, skipping the SRT glob that
+     * filesForTake() performs. Used by the file-list filter, which asks this
+     * question once per candidate take.
+     */
+    public function hasEaf(string $takeBasename): bool {
+        $safe = $this->safeName($takeBasename);
+        if ($safe === '') {
+            return false;
+        }
+        $path = $this->eafDir . $safe . '.eaf';
+        return is_file($path) && $this->isWithin($path);
+    }
+
+    /**
      * Reduce a (DB-sourced, but still untrusted) take name to a bare basename of
      * safe characters. The strict character class blocks path traversal and also
      * keeps glob() metacharacters (*, ?, [) out of the pattern built above.

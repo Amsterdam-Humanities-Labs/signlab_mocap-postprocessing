@@ -80,4 +80,27 @@ class EafLocatorTest extends TestCase {
         $this->assertSame([], $locator->filesForTake('M2024*'));
         $this->assertSame([], $locator->filesForTake(''));
     }
+
+    public function testHasEafIsTrueOnlyForTakeLevelEaf(): void {
+        $this->touchFile('M20240925_1858_260319_0.eaf');
+        $this->touchFile('M20240925_1858.eaf');
+        $this->touchFile('M20240925_1858_260319_1_Nederlands.srt');
+
+        $locator = new EafLocator($this->dir);
+
+        $this->assertTrue($locator->hasEaf('M20240925_1858_260319_0'));
+        // Only an SRT exists for this take — no annotation.
+        $this->assertFalse($locator->hasEaf('M20240925_1858_260319_1'));
+        // Never seen at all.
+        $this->assertFalse($locator->hasEaf('M20240925_9999_260319_0'));
+    }
+
+    public function testHasEafRejectsUnsafeNames(): void {
+        $this->touchFile('M20240925_1858_260319_0.eaf');
+        $locator = new EafLocator($this->dir);
+
+        $this->assertFalse($locator->hasEaf('../M20240925_1858_260319_0'));
+        $this->assertFalse($locator->hasEaf('M2024*'));
+        $this->assertFalse($locator->hasEaf(''));
+    }
 }
