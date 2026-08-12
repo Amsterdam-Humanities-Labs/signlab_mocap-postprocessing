@@ -103,4 +103,25 @@ class EafLocatorTest extends TestCase {
         $this->assertFalse($locator->hasEaf('M2024*'));
         $this->assertFalse($locator->hasEaf(''));
     }
+
+    public function testHasEafRejectsDotAndDotDot(): void {
+        // Deliberately named so a non-rejecting safeName() would "accidentally"
+        // resolve to a real file here: eafDir + '.' + '.eaf' === '..eaf', and
+        // eafDir + '..' + '.eaf' === '...eaf'. If safeName() ever stops
+        // rejecting '.'/'..' explicitly, this test starts passing for the
+        // wrong reason (a literal match) instead of failing loudly.
+        $this->touchFile('..eaf');
+        $this->touchFile('...eaf');
+        $locator = new EafLocator($this->dir);
+
+        try {
+            $this->assertFalse($locator->hasEaf('.'));
+            $this->assertFalse($locator->hasEaf('..'));
+        } finally {
+            // Dot-prefixed names are invisible to tearDown()'s glob('*') sweep;
+            // remove them explicitly so rmdir($this->dir) doesn't fail.
+            @unlink($this->dir . '/..eaf');
+            @unlink($this->dir . '/...eaf');
+        }
+    }
 }

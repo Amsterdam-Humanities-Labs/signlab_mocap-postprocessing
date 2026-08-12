@@ -23,9 +23,14 @@ class DownloadController {
     private $miniPath = '/web/gebarenoverleg_media/blackamgic_filesMini/';
 
     /**
-     * Hard ceiling on takes per EAF bundle. At roughly 4.4 MB a take the ZIP is
-     * built on temp disk before streaming, so an unbounded batch is a real
-     * failure mode rather than a theoretical one.
+     * Hard ceiling on takes per EAF bundle. Mini MP4 coverage (0.3 MB) only
+     * starts 2026-05-11, so every currently filter-eligible take instead
+     * resolves to the 8.6 MB RIGHT MKV — a measured average of ~10.14 MB a
+     * take. At the cap that's roughly 1 GB, which at measured STORE
+     * throughput (~13 MB/s) is about 76s — inside Apache's 300s Timeout, but
+     * well above a back-of-envelope guess. The ZIP is built on temp disk
+     * before streaming, so an unbounded batch is a real failure mode rather
+     * than a theoretical one.
      */
     private const EAF_BATCH_LIMIT = 100;
 

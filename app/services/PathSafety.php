@@ -19,6 +19,9 @@ trait PathSafety {
             return '';
         }
         $base = basename($name);
+        if ($base === '.' || $base === '..') {
+            return '';
+        }
         return preg_match('/^[A-Za-z0-9._-]+$/', $base) ? $base : '';
     }
 
