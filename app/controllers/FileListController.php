@@ -79,6 +79,7 @@ class FileListController {
         $downloadedFiles = $this->mocapFileModel->getDownloadedFileIds($allFileIds);
         $fileLabels = $this->mocapFileModel->getLabelsForFiles($allFileIds);
         $fileGlosses = $this->mocapFileModel->getGlossesForFiles($allFileIds);
+        $fileMcpStatus = $this->mocapFileModel->getMcpStatusForFiles($allFileIds);
 
         // Preview video per file: Blackmagic MP4 preferred, RIGHT MKV fallback
         $previewVideos = $this->mocapFileModel->getPreviewVideos($allFiles);

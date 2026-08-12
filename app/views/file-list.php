@@ -108,6 +108,9 @@
                     Download Selected
                 </button>
                 <?php endif; ?>
+                <button onclick="downloadSelectedEaf()" class="bg-purple-600 hover:bg-purple-800 text-white font-bold py-2 px-4 rounded disabled:opacity-50" id="downloadEafBtn" disabled>
+                    Download Selected (EAF)
+                </button>
                 <a href="upload.php" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded inline-block">
                     Upload Processed Files
                 </a>
@@ -132,11 +135,9 @@
                             <table class="w-full">
                                 <thead>
                                     <tr class="text-left text-gray-600 text-sm">
-                                        <?php if ($selectedStatus === 'unprocessed' || $selectedStatus === 'all'): ?>
                                         <th class="pb-3">
                                             <input type="checkbox" class="date-checkbox" data-date="<?php echo $date; ?>">
                                         </th>
-                                        <?php endif; ?>
                                         <th class="pb-3">Filename</th>
                                         <?php if ($selectedStatus === 'processed' || $selectedStatus === 'all'): ?>
                                         <th class="pb-3">Processed Filename</th>
@@ -152,13 +153,9 @@
                                 <tbody>
                                     <?php foreach ($files as $file): ?>
                                         <tr class="border-t">
-                                            <?php if ($selectedStatus === 'unprocessed' || $selectedStatus === 'all'): ?>
                                             <td class="py-3">
-                                                <?php if ($file['is_pp'] == 0): ?>
                                                 <input type="checkbox" name="selected_files[]" value="<?php echo $file['id']; ?>" class="file-checkbox" data-date="<?php echo $date; ?>">
-                                                <?php endif; ?>
                                             </td>
-                                            <?php endif; ?>
                                             <td class="py-3 font-mono text-sm">
                                                 <?php echo htmlspecialchars($file['filename']); ?>
                                                 <?php if (!empty($fileGlosses[$file['id']])): ?>
@@ -182,6 +179,27 @@
                                                         <?php endforeach; ?>
                                                     </div>
                                                 <?php endif; ?>
+                                                <?php
+                                                    $mcp = $fileMcpStatus[$file['id']] ?? ['pp' => null, 'ta' => null, 'klaar' => false];
+                                                    $ppLabel = $mcp['pp'] === '1' ? 'Klaar' : ($mcp['pp'] === '2' ? 'Check nodig' : ($mcp['pp'] === null || $mcp['pp'] === '' ? 'leeg' : $mcp['pp']));
+                                                    $taLabel = ($mcp['ta'] === null || $mcp['ta'] === '') ? 'leeg' : $mcp['ta'];
+                                                    if ($mcp['klaar']) {
+                                                        $mcpText  = 'MCP Klaar';
+                                                        $mcpClass = 'bg-green-100 text-green-800';
+                                                    } else {
+                                                        $blocking = [];
+                                                        if ($mcp['pp'] !== '1') $blocking[] = 'PP';
+                                                        if ($mcp['ta'] !== 'Klaar') $blocking[] = 'TA';
+                                                        $mcpText  = implode(' + ', $blocking) . ' niet klaar';
+                                                        $mcpClass = 'bg-gray-100 text-gray-600';
+                                                    }
+                                                ?>
+                                                <div class="mt-1">
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium <?php echo $mcpClass; ?>"
+                                                          title="MCP postprocessing: <?php echo htmlspecialchars($ppLabel); ?> — MCP tijd annotatie: <?php echo htmlspecialchars($taLabel); ?>">
+                                                        <?php echo htmlspecialchars($mcpText); ?>
+                                                    </span>
+                                                </div>
                                             </td>
                                             <?php if ($selectedStatus === 'processed' || $selectedStatus === 'all'): ?>
                                             <td class="py-3 font-mono text-sm text-green-700"><?php echo htmlspecialchars($file['filename_pp'] ?? 'N/A'); ?></td>
@@ -475,8 +493,11 @@
         document.querySelectorAll('.file-checkbox').forEach(cb => cb.addEventListener('change', updateDownloadButton));
 
         function updateDownloadButton() {
+            const anyChecked = document.querySelectorAll('.file-checkbox:checked').length > 0;
             const btn = document.getElementById('downloadBtn');
-            if (btn) btn.disabled = document.querySelectorAll('.file-checkbox:checked').length === 0;
+            if (btn) btn.disabled = !anyChecked;
+            const eafBtn = document.getElementById('downloadEafBtn');
+            if (eafBtn) eafBtn.disabled = !anyChecked;
         }
 
         function downloadSelected() {
@@ -487,6 +508,11 @@
             } else {
                 window.location.href = 'download.php?bulk=' + fileIds.join(',');
             }
+        }
+        function downloadSelectedEaf() {
+            const fileIds = Array.from(document.querySelectorAll('.file-checkbox:checked')).map(cb => cb.value);
+            if (fileIds.length === 0) return;
+            window.location.href = 'download-eaf.php?bulk=' + fileIds.join(',');
         }
         function editComment(fileId, displayEl) {
             const cell = displayEl.closest('.comment-cell');
