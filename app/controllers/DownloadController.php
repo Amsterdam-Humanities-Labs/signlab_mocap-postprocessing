@@ -4,6 +4,7 @@ namespace App\controllers;
 use App\models\MocapFile;
 use App\config\Database;
 use App\services\EafLocator;
+use App\services\TakeBundleLocator;
 use PDO;
 use ZipArchive;
 
@@ -15,6 +16,13 @@ class DownloadController {
 
     private $blackmagicPath = '/web/gebarenoverleg_media/studioFiles/blackmagic_files/';
     private $razerPath = '/mnt/bigstorage/razerFiles/';
+
+    /**
+     * Hard ceiling on takes per EAF bundle. At roughly 4.4 MB a take the ZIP is
+     * built on temp disk before streaming, so an unbounded batch is a real
+     * failure mode rather than a theoretical one.
+     */
+    private const EAF_BATCH_LIMIT = 100;
 
     public function __construct() {
         $this->mocapFileModel = new MocapFile();
@@ -281,6 +289,14 @@ class DownloadController {
      * inside the ZIP, so an unexpectedly small download is explainable.
      */
     public function downloadEaf($fileIds, array $currentUser = []) {
+        if (count($fileIds) > self::EAF_BATCH_LIMIT) {
+            header('HTTP/1.0 400 Bad Request');
+            echo "Too many takes selected (" . count($fileIds) . "). "
+               . "The limit is " . self::EAF_BATCH_LIMIT . " per EAF download — "
+               . "please select fewer takes and try again.";
+            exit;
+        }
+
         $files = $this->mocapFileModel->getFilesByIds($fileIds);
 
         if (empty($files)) {
@@ -292,7 +308,15 @@ class DownloadController {
         $statuses = $this->mocapFileModel->getMcpStatusForFiles(
             array_map(static fn($f) => (int)$f['id'], $files)
         );
-        $locator = new EafLocator();
+
+        $locator = new TakeBundleLocator(new EafLocator());
+
+        // One query for every capture's RIGHT-MKV fallback, rather than one per take.
+        $captureIds = array_values(array_unique(array_map(
+            static fn($f) => $f['capture_id'],
+            $files
+        )));
+        $rightVideos = $this->mocapFileModel->getRightVideos($captureIds);
 
         $tempDir = sys_get_temp_dir() . '/eaf_' . uniqid();
         mkdir($tempDir);
@@ -311,6 +335,7 @@ class DownloadController {
         $skipped = [];
         $missing = [];
         $included = [];
+        $incompleteAssets = [];
 
         foreach ($files as $file) {
             $status = $statuses[(int)$file['id']] ?? ['pp' => null, 'ta' => null, 'klaar' => false];
@@ -331,33 +356,39 @@ class DownloadController {
                 continue;
             }
 
-            $paths = $locator->filesForTake($take);
-            if (empty($paths)) {
+            $bundle = $locator->bundleForTake([
+                'take'         => $take,
+                'pp_filename'  => $file['filename_pp'] ?? null,
+                'capture_date' => $file['capture_date'] ?? null,
+                'mkv_name'     => $rightVideos[$file['capture_id']] ?? null,
+            ]);
+
+            if (empty($bundle['files'])) {
                 $missing[] = $take;
                 continue;
             }
 
-            $addedEntries = [];
             $addFailed = false;
-            foreach ($paths as $path) {
-                $entry = $take . '/' . basename($path);
-                if ($zip->addFile($path, $entry)) {
-                    $addedEntries[] = $entry;
-                } else {
-                    $addFailed = true;
-                    break;
+            $addedEntries = [];
+            foreach ($bundle['files'] as $item) {
+                if ($zip->addFile($item['path'], $item['entry'])) {
+                    $addedEntries[] = $item['entry'];
+                    continue;
                 }
+                $addFailed = true;
+                break;
             }
 
             if ($addFailed) {
-                // A path EafLocator found via is_file() became unreadable/missing by the
-                // time addFile() ran (narrow TOCTOU window). Don't leave a half-added take
-                // in the ZIP, and don't log or count it as delivered.
                 foreach ($addedEntries as $entry) {
                     $zip->deleteName($entry);
                 }
-                $missing[] = $take . ' (file(s) could not be added to the ZIP — removed or unreadable while the download was being built)';
+                $missing[] = $take . ' (could not be added to the archive)';
                 continue;
+            }
+
+            if (!empty($bundle['missing'])) {
+                $incompleteAssets[] = $take . ' — ' . implode(', ', $bundle['missing']);
             }
 
             $included[] = $file;
@@ -381,6 +412,16 @@ class DownloadController {
                 . "(The broadcast-level .eaf is not used as a fallback: it covers the whole\n"
                 . "broadcast and is not time-aligned to an individual take.)\n\n"
                 . implode("\n", $missing) . "\n"
+            );
+        }
+
+        if (!empty($incompleteAssets)) {
+            $zip->addFromString(
+                'MISSING_ASSETS.txt',
+                "These takes were included, but some of their assets were not found on the server.\n"
+                . "(A take is bundled whenever its .eaf exists; the post-processed animation and the\n"
+                . "reference video are optional.)\n\n"
+                . implode("\n", $incompleteAssets) . "\n"
             );
         }
 
