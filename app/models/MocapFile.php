@@ -8,6 +8,7 @@ class MocapFile {
     private $db;
     private $baseFilter = "subdirectory = 'unreal/CC'";
     private $broadcastNameCache = [];
+    private ?array $klaarEafIdCache = null;
 
     /**
      * Capture dates (YYYY-MM-DD) to hide everywhere in the app.
@@ -236,7 +237,7 @@ class MocapFile {
 
     // ─── Unprocessed files ───
 
-    public function getUnprocessedFilesGroupedByDate($limit = null, $page = 1, $searchTerm = '', ?array $allowedDates = null, ?string $labelFilter = null) {
+    public function getUnprocessedFilesGroupedByDate($limit = null, $page = 1, $searchTerm = '', ?array $allowedDates = null, ?string $labelFilter = null, ?string $mcpFilter = null) {
         $offset = $limit ? ($page - 1) * $limit : 0;
 
         // Deduplicate: latest take per base glos (strip _N suffix)
@@ -310,6 +311,11 @@ class MocapFile {
             $sql .= " AND " . $lfrag;
             $params = array_merge($params, $lp);
         }
+        [$mfrag, $mp] = $this->mcpFilterPredicate('f1.id', $mcpFilter);
+        if ($mfrag !== '') {
+            $sql .= " AND " . $mfrag;
+            $params = array_merge($params, $mp);
+        }
 
         $sql .= " ORDER BY f1.last_modified DESC, f1.id DESC";
 
@@ -334,7 +340,7 @@ class MocapFile {
         return $this->groupByDate($stmt->fetchAll(), 'capture_date');
     }
 
-    public function getUnprocessedFilesCount($searchTerm = '', ?array $allowedDates = null, ?string $labelFilter = null) {
+    public function getUnprocessedFilesCount($searchTerm = '', ?array $allowedDates = null, ?string $labelFilter = null, ?string $mcpFilter = null) {
         $sql = "SELECT COUNT(DISTINCT
                     CASE
                         WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
@@ -379,6 +385,11 @@ class MocapFile {
             $sql .= " AND " . $lfrag;
             $params = array_merge($params, $lp);
         }
+        [$mfrag, $mp] = $this->mcpFilterPredicate('id', $mcpFilter);
+        if ($mfrag !== '') {
+            $sql .= " AND " . $mfrag;
+            $params = array_merge($params, $mp);
+        }
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
@@ -387,7 +398,7 @@ class MocapFile {
 
     // ─── Unprocessed by specific date ───
 
-    public function getUnprocessedFilesByDate($date, $limit = null, $page = 1, $searchTerm = '', ?string $labelFilter = null) {
+    public function getUnprocessedFilesByDate($date, $limit = null, $page = 1, $searchTerm = '', ?string $labelFilter = null, ?string $mcpFilter = null) {
         $offset = $limit ? ($page - 1) * $limit : 0;
 
         $sql = "SELECT f1.*, SUBSTRING_INDEX(f1.capture_id, '/', 1) AS capture_date
@@ -451,6 +462,11 @@ class MocapFile {
             $sql .= " AND " . $lfrag;
             $params = array_merge($params, $lp);
         }
+        [$mfrag, $mp] = $this->mcpFilterPredicate('f1.id', $mcpFilter);
+        if ($mfrag !== '') {
+            $sql .= " AND " . $mfrag;
+            $params = array_merge($params, $mp);
+        }
 
         $sql .= " ORDER BY f1.last_modified DESC, f1.id DESC";
 
@@ -468,7 +484,7 @@ class MocapFile {
         return $this->groupByDate($stmt->fetchAll(), 'capture_date');
     }
 
-    public function getUnprocessedFilesCountByDate($date, $searchTerm = '', ?string $labelFilter = null) {
+    public function getUnprocessedFilesCountByDate($date, $searchTerm = '', ?string $labelFilter = null, ?string $mcpFilter = null) {
         $sql = "SELECT COUNT(DISTINCT
                     CASE
                         WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
@@ -505,6 +521,11 @@ class MocapFile {
             $sql .= " AND " . $lfrag;
             $params = array_merge($params, $lp);
         }
+        [$mfrag, $mp] = $this->mcpFilterPredicate('id', $mcpFilter);
+        if ($mfrag !== '') {
+            $sql .= " AND " . $mfrag;
+            $params = array_merge($params, $mp);
+        }
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
@@ -513,7 +534,7 @@ class MocapFile {
 
     // ─── Processed files ───
 
-    public function getProcessedFilesGroupedByDate($limit = null, $page = 1, $searchTerm = '', $reviewStatus = 'all', ?array $allowedDates = null, ?string $labelFilter = null) {
+    public function getProcessedFilesGroupedByDate($limit = null, $page = 1, $searchTerm = '', $reviewStatus = 'all', ?array $allowedDates = null, ?string $labelFilter = null, ?string $mcpFilter = null) {
         $offset = $limit ? ($page - 1) * $limit : 0;
 
         $sql = "SELECT *, SUBSTRING_INDEX(capture_id, '/', 1) AS capture_date
@@ -541,6 +562,11 @@ class MocapFile {
             $sql .= " AND " . $lfrag;
             $params = array_merge($params, $lp);
         }
+        [$mfrag, $mp] = $this->mcpFilterPredicate('id', $mcpFilter);
+        if ($mfrag !== '') {
+            $sql .= " AND " . $mfrag;
+            $params = array_merge($params, $mp);
+        }
 
         if ($reviewStatus !== 'all') {
             $sql .= " AND review_status = ?";
@@ -563,7 +589,7 @@ class MocapFile {
         return $this->groupByDate($stmt->fetchAll(), 'capture_date');
     }
 
-    public function getProcessedFilesByDate($date, $limit = null, $page = 1, $searchTerm = '', ?string $labelFilter = null) {
+    public function getProcessedFilesByDate($date, $limit = null, $page = 1, $searchTerm = '', ?string $labelFilter = null, ?string $mcpFilter = null) {
         $offset = $limit ? ($page - 1) * $limit : 0;
 
         $sql = "SELECT *, SUBSTRING_INDEX(capture_id, '/', 1) AS capture_date
@@ -583,6 +609,11 @@ class MocapFile {
             $sql .= " AND " . $lfrag;
             $params = array_merge($params, $lp);
         }
+        [$mfrag, $mp] = $this->mcpFilterPredicate('id', $mcpFilter);
+        if ($mfrag !== '') {
+            $sql .= " AND " . $mfrag;
+            $params = array_merge($params, $mp);
+        }
 
         $sql .= " ORDER BY last_modified DESC, id DESC";
 
@@ -600,7 +631,7 @@ class MocapFile {
         return $this->groupByDate($stmt->fetchAll(), 'capture_date');
     }
 
-    public function getProcessedFilesCount($searchTerm = '', $reviewStatus = 'all', ?array $allowedDates = null, ?string $labelFilter = null) {
+    public function getProcessedFilesCount($searchTerm = '', $reviewStatus = 'all', ?array $allowedDates = null, ?string $labelFilter = null, ?string $mcpFilter = null) {
         $sql = "SELECT COUNT(*) AS total FROM vicon_files WHERE {$this->baseFilter} AND is_pp = 1";
 
         $params = [];
@@ -624,6 +655,11 @@ class MocapFile {
             $sql .= " AND " . $lfrag;
             $params = array_merge($params, $lp);
         }
+        [$mfrag, $mp] = $this->mcpFilterPredicate('id', $mcpFilter);
+        if ($mfrag !== '') {
+            $sql .= " AND " . $mfrag;
+            $params = array_merge($params, $mp);
+        }
 
         if ($reviewStatus !== 'all') {
             $sql .= " AND review_status = ?";
@@ -635,7 +671,7 @@ class MocapFile {
         return $stmt->fetch()['total'];
     }
 
-    public function getProcessedFilesCountByDate($date, $searchTerm = '', ?string $labelFilter = null) {
+    public function getProcessedFilesCountByDate($date, $searchTerm = '', ?string $labelFilter = null, ?string $mcpFilter = null) {
         $sql = "SELECT COUNT(*) AS total FROM vicon_files
                 WHERE {$this->baseFilter} AND is_pp = 1
                 AND SUBSTRING_INDEX(capture_id, '/', 1) = ?";
@@ -652,6 +688,11 @@ class MocapFile {
             $sql .= " AND " . $lfrag;
             $params = array_merge($params, $lp);
         }
+        [$mfrag, $mp] = $this->mcpFilterPredicate('id', $mcpFilter);
+        if ($mfrag !== '') {
+            $sql .= " AND " . $mfrag;
+            $params = array_merge($params, $mp);
+        }
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
@@ -660,7 +701,7 @@ class MocapFile {
 
     // ─── All files ───
 
-    public function getAllFilesGroupedByDate($limit = null, $page = 1, $searchTerm = '', ?array $allowedDates = null, ?string $labelFilter = null) {
+    public function getAllFilesGroupedByDate($limit = null, $page = 1, $searchTerm = '', ?array $allowedDates = null, ?string $labelFilter = null, ?string $mcpFilter = null) {
         $offset = $limit ? ($page - 1) * $limit : 0;
 
         $sql = "SELECT f1.*, SUBSTRING_INDEX(f1.capture_id, '/', 1) AS capture_date
@@ -717,6 +758,11 @@ class MocapFile {
             $sql .= " AND " . $lfrag;
             $params = array_merge($params, $lp);
         }
+        [$mfrag, $mp] = $this->mcpFilterPredicate('f1.id', $mcpFilter);
+        if ($mfrag !== '') {
+            $sql .= " AND " . $mfrag;
+            $params = array_merge($params, $mp);
+        }
 
         $sql .= " ORDER BY f1.last_modified DESC, f1.id DESC";
 
@@ -734,7 +780,7 @@ class MocapFile {
         return $this->groupByDate($stmt->fetchAll(), 'capture_date');
     }
 
-    public function getAllFilesByDate($date, $limit = null, $page = 1, $searchTerm = '', ?string $labelFilter = null) {
+    public function getAllFilesByDate($date, $limit = null, $page = 1, $searchTerm = '', ?string $labelFilter = null, ?string $mcpFilter = null) {
         $offset = $limit ? ($page - 1) * $limit : 0;
 
         $sql = "SELECT f1.*, SUBSTRING_INDEX(f1.capture_id, '/', 1) AS capture_date
@@ -784,6 +830,11 @@ class MocapFile {
             $sql .= " AND " . $lfrag;
             $params = array_merge($params, $lp);
         }
+        [$mfrag, $mp] = $this->mcpFilterPredicate('f1.id', $mcpFilter);
+        if ($mfrag !== '') {
+            $sql .= " AND " . $mfrag;
+            $params = array_merge($params, $mp);
+        }
 
         $sql .= " ORDER BY f1.last_modified DESC, f1.id DESC";
 
@@ -801,7 +852,7 @@ class MocapFile {
         return $this->groupByDate($stmt->fetchAll(), 'capture_date');
     }
 
-    public function getAllFilesCount($searchTerm = '', ?array $allowedDates = null, ?string $labelFilter = null) {
+    public function getAllFilesCount($searchTerm = '', ?array $allowedDates = null, ?string $labelFilter = null, ?string $mcpFilter = null) {
         $sql = "SELECT COUNT(DISTINCT
                     CASE
                         WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
@@ -830,13 +881,18 @@ class MocapFile {
             $sql .= " AND " . $lfrag;
             $params = array_merge($params, $lp);
         }
+        [$mfrag, $mp] = $this->mcpFilterPredicate('id', $mcpFilter);
+        if ($mfrag !== '') {
+            $sql .= " AND " . $mfrag;
+            $params = array_merge($params, $mp);
+        }
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetch()['total'];
     }
 
-    public function getAllFilesCountByDate($date, $searchTerm = '', ?string $labelFilter = null) {
+    public function getAllFilesCountByDate($date, $searchTerm = '', ?string $labelFilter = null, ?string $mcpFilter = null) {
         $sql = "SELECT COUNT(DISTINCT
                     CASE
                         WHEN filename REGEXP '_[0-9]{6}_[0-9]+\\.fbx$' THEN SUBSTRING_INDEX(REPLACE(filename, '.fbx', ''), '_', 3)
@@ -857,6 +913,11 @@ class MocapFile {
         if ($lfrag !== '') {
             $sql .= " AND " . $lfrag;
             $params = array_merge($params, $lp);
+        }
+        [$mfrag, $mp] = $this->mcpFilterPredicate('id', $mcpFilter);
+        if ($mfrag !== '') {
+            $sql .= " AND " . $mfrag;
+            $params = array_merge($params, $mp);
         }
 
         $stmt = $this->db->prepare($sql);
@@ -1173,6 +1234,50 @@ class MocapFile {
         return $result;
     }
 
+    /**
+     * vicon_files.id for every both-Klaar take that also has a take-level .eaf
+     * on disk.
+     *
+     * Two steps by necessity: the Klaar gate is a SQL fact, but EAF existence is
+     * a filesystem fact the database does not record, so each candidate needs a
+     * stat. The candidate set is small (hundreds), so this costs single-digit
+     * milliseconds. Cached per instance because the grouped query and the count
+     * query both ask for it within one request.
+     */
+    public function klaarFileIdsWithEaf(): array {
+        if ($this->klaarEafIdCache !== null) return $this->klaarEafIdCache;
+
+        $sql = "
+            SELECT vf.id AS file_id, vf.filename
+            FROM vicon_files vf
+            JOIN matched_transcriptions mt
+                   ON mt.m_file = CONCAT(SUBSTRING_INDEX(vf.filename, '_', 2), '.wav')
+                  AND LOWER(mt.zOg) = 'zin'
+            JOIN sentences s
+                   ON s.ID = CAST(mt.m_transcription AS UNSIGNED)
+            WHERE vf.subdirectory = 'unreal/CC'
+              AND s.mcp_status_postprocessing = '1'
+              AND s.mcp_status_tijd_annotatie = 'Klaar'
+        ";
+        $stmt = $this->db->query($sql);
+
+        $locator = new \App\services\EafLocator();
+        $ids  = [];
+        $seen = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $fid = (int)$row['file_id'];
+            if (isset($seen[$fid])) continue;   // one row per file, regardless of join fan-out
+            $seen[$fid] = true;
+
+            $take = preg_replace('/\.fbx$/i', '', basename((string)$row['filename']));
+            if ($locator->hasEaf($take)) {
+                $ids[] = $fid;
+            }
+        }
+
+        return $this->klaarEafIdCache = $ids;
+    }
+
     // ─── Helpers ───
 
     /**
@@ -1258,6 +1363,26 @@ class MocapFile {
 
         $ph = implode(',', array_fill(0, count($names), '?'));
         return ["SUBSTRING_INDEX($filenameCol, '_', 2) IN ($ph)", $names];
+    }
+
+    /**
+     * Supported $mcpFilter values: 'klaar_eaf' (both MCP gates Klaar AND a
+     * take-level .eaf on disk). 'all', '' and null disable the filter.
+     *
+     * $idCol must be qualified to match the calling query's alias — 'f1.id' for
+     * the grouped/by-date queries, plain 'id' for the count queries.
+     */
+    private function mcpFilterPredicate(string $idCol, ?string $mcpFilter): array {
+        if ($mcpFilter === null) return ['', []];
+        $mf = strtolower(trim($mcpFilter));
+        if ($mf === '' || $mf === 'all') return ['', []];
+        if ($mf !== 'klaar_eaf') return ['', []];
+
+        $ids = $this->klaarFileIdsWithEaf();
+        if (empty($ids)) return ['1 = 0', []]; // no matches → filter out everything
+
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        return ["$idCol IN ($ph)", $ids];
     }
 
     private function groupByDate(array $results, string $dateField): array {
