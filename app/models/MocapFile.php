@@ -893,8 +893,8 @@ class MocapFile {
     public function getPreviewVideos(array $files): array {
         if (empty($files)) return [];
 
-        $bmDisk = '/web/gebarenoverleg_media/studioFiles/blackmagic_files/';
-        $bmWeb  = '/gebarenoverleg_media/studioFiles/blackmagic_files/';
+        $bmDisk = '/web/gebarenoverleg_media/blackmagic_filesMini/';
+        $bmWeb  = '/gebarenoverleg_media/blackmagic_filesMini/';
 
         // MKV fallback, keyed by capture_id
         $captureIds = [];
@@ -1097,6 +1097,61 @@ class MocapFile {
             if ($value !== '') {
                 $result[$fid] = $value;
             }
+        }
+        return $result;
+    }
+
+    /**
+     * True when both motion-capture gates read "Klaar".
+     *
+     * Note the asymmetry between the two columns: zinnen.html renders the
+     * postprocessing dropdown as <option value="1">Klaar</option>, so that
+     * column stores '1' (and '2' for "Check nodig"), while the tijd-annotatie
+     * column stores the literal word "Klaar".
+     */
+    public static function isKlaar(?string $pp, ?string $ta): bool {
+        return $pp === '1' && $ta === 'Klaar';
+    }
+
+    /**
+     * MCP postprocessing / tijd-annotatie status per vicon_files row.
+     *
+     * Follows the same chain as getGlossesForFiles(): the mocap filename's first
+     * two underscore-separated parts are the broadcast name, which matches
+     * matched_transcriptions.m_file with a .wav suffix, whose m_transcription is
+     * the sentences.ID for zOg='zin' rows.
+     *
+     * Returns file_id => ['pp' => ?string, 'ta' => ?string, 'klaar' => bool].
+     * Files with no matching sentence are absent from the map; callers treat a
+     * missing entry as not-Klaar.
+     */
+    public function getMcpStatusForFiles(array $fileIds): array {
+        if (empty($fileIds)) return [];
+        $ph = implode(',', array_fill(0, count($fileIds), '?'));
+
+        $sql = "
+            SELECT vf.id AS file_id,
+                   s.mcp_status_postprocessing AS pp,
+                   s.mcp_status_tijd_annotatie AS ta
+            FROM vicon_files vf
+            JOIN matched_transcriptions mt
+                   ON mt.m_file = CONCAT(SUBSTRING_INDEX(vf.filename, '_', 2), '.wav')
+                  AND LOWER(mt.zOg) = 'zin'
+            JOIN sentences s
+                   ON s.ID = CAST(mt.m_transcription AS UNSIGNED)
+            WHERE vf.id IN ($ph)
+        ";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($fileIds);
+
+        $result = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $fid = (int)$row['file_id'];
+            if (isset($result[$fid])) continue; // first match per file wins
+
+            $pp = $row['pp'] !== null ? (string)$row['pp'] : null;
+            $ta = $row['ta'] !== null ? (string)$row['ta'] : null;
+            $result[$fid] = ['pp' => $pp, 'ta' => $ta, 'klaar' => self::isKlaar($pp, $ta)];
         }
         return $result;
     }
