@@ -147,3 +147,4 @@ mysql -u user -p admin_gebarenoverleg < migrations/006_download_logs_eaf_type.sq
 - BabylonCC uses CDN — no npm/Vite build needed. Just edit HTML and refresh.
 - Post-processed animations from Unreal have reduced rotation ranges (~3x smaller) — the compare tool compensates with per-bone amplification
 - The file list's "MCP Klaar+EAF" filter shows only takes that are workflow-complete and have a take-level annotation on disk (via `EafLocator::hasEaf()`)
+- "MCP Klaar" means `sentences.mcp_status_postprocessing = '1'` AND `sentences.mcp_status_tijd_annotatie = 'Klaar'` — see `MocapFile::isKlaar()`. Two traps: the postprocessing column stores the dropdown's *value* (`1` = Klaar, `2` = Check nodig), not the word; and `mcp_status_tijd_annotatie` is the **Gloss** field in `zinnen.html`. The separate `mcp_status_tijd_annotatie_gvg` (Gebaar voor Gebaar/Nederlands) is deliberately NOT part of the gate.
