@@ -17,6 +17,11 @@ class DownloadController {
     private $blackmagicPath = '/web/gebarenoverleg_media/studioFiles/blackmagic_files/';
     private $razerPath = '/mnt/bigstorage/razerFiles/';
 
+    // NOTE: "blackamgic" (m/a transposed) is the actual directory name on disk —
+    // a symlink to /mnt/bigstorage/blackmagic_filesMini/. Matching the misspelling
+    // here is deliberate; see MocapFile::getPreviewVideos() for the same pattern.
+    private $miniPath = '/web/gebarenoverleg_media/blackamgic_filesMini/';
+
     /**
      * Hard ceiling on takes per EAF bundle. At roughly 4.4 MB a take the ZIP is
      * built on temp disk before streaming, so an unbounded batch is a real
@@ -49,9 +54,12 @@ class DownloadController {
     }
 
     /**
-     * Locate the reference video to bundle with a take's FBX: prefer the Blackmagic
-     * MP4 (same basename as the FBX, inside the capture-date folder), fall back to the
-     * RIGHT MKV. Returns ['path' => disk path, 'entry' => zip/download name] or null.
+     * Locate the reference video to bundle with a take's FBX: prefer the Mini MP4
+     * (small, same basename as the FBX, inside the capture-date folder), fall back
+     * to the RIGHT MKV, and only as a last resort fall back to the full Blackmagic
+     * MP4 (~81 MB — the size driver behind bulk-download timeouts, see
+     * DownloadController class-level fix notes). Returns
+     * ['path' => disk path, 'entry' => zip/download name] or null.
      *
      * $rightVideos: optional pre-fetched capture_id => filename map (so bulk downloads
      * don't issue one query per file); when null, looked up for this file's capture.
@@ -59,9 +67,13 @@ class DownloadController {
     private function findVideoForFile(array $file, string $safeFbx, ?array $rightVideos = null): ?array {
         $dateFolder = preg_replace('/[^0-9-]/', '', (string)($file['capture_date'] ?? ''));
         $mp4Name = preg_replace('/\\.fbx$/i', '.mp4', $safeFbx);
-        $mp4Path = $dateFolder !== '' ? $this->blackmagicPath . $dateFolder . '/' . $mp4Name : null;
-        if ($mp4Path && is_file($mp4Path) && $this->isWithin($mp4Path, $this->blackmagicPath)) {
-            return ['path' => $mp4Path, 'entry' => $mp4Name];
+
+        // "blackamgic" (m/a transposed) is the actual directory name on disk — a
+        // symlink to /mnt/bigstorage/blackmagic_filesMini/. Matching the misspelling
+        // is deliberate; do not "fix" it back to "blackmagic" or the lookup breaks.
+        $miniPath = $dateFolder !== '' ? $this->miniPath . $dateFolder . '/' . $mp4Name : null;
+        if ($miniPath && is_file($miniPath) && $this->isWithin($miniPath, $this->miniPath)) {
+            return ['path' => $miniPath, 'entry' => $mp4Name];
         }
 
         $map = $rightVideos ?? $this->mocapFileModel->getRightVideos([$file['capture_id']]);
@@ -69,6 +81,13 @@ class DownloadController {
         $mkvPath = $safeVideo !== '' ? $this->razerPath . $safeVideo : null;
         if ($mkvPath && is_file($mkvPath) && $this->isWithin($mkvPath, $this->razerPath)) {
             return ['path' => $mkvPath, 'entry' => $safeVideo];
+        }
+
+        // Last resort: the full Blackmagic MP4 (~81 MB) so takes with neither a
+        // Mini nor an MKV still get a reference video.
+        $mp4Path = $dateFolder !== '' ? $this->blackmagicPath . $dateFolder . '/' . $mp4Name : null;
+        if ($mp4Path && is_file($mp4Path) && $this->isWithin($mp4Path, $this->blackmagicPath)) {
+            return ['path' => $mp4Path, 'entry' => $mp4Name];
         }
 
         return null;
@@ -81,6 +100,11 @@ class DownloadController {
     }
 
     public function downloadSingle($id, $type = 'original', array $currentUser = []) {
+        // A ZIP build (FBX + video) can legitimately run past the default 30s
+        // execution limit now that STORE is used; Apache's 300s Timeout remains
+        // the real ceiling.
+        set_time_limit(0);
+
         $file = $this->mocapFileModel->getFileById($id);
 
         if (!$file) {
@@ -136,8 +160,14 @@ class DownloadController {
                 $zipPath = sys_get_temp_dir() . '/' . $baseName . '.zip';
                 $zip = new \ZipArchive();
                 if ($zip->open($zipPath, \ZipArchive::CREATE) === true) {
-                    $zip->addFile($fbxLocalPath, $safe);
-                    $zip->addFile($videoPath, $videoEntry);
+                    // Media files are already compressed; STORE (no deflate) is ~3x
+                    // faster with only a ~6% size penalty — see class-level fix notes.
+                    if ($zip->addFile($fbxLocalPath, $safe)) {
+                        $zip->setCompressionName($safe, \ZipArchive::CM_STORE);
+                    }
+                    if ($zip->addFile($videoPath, $videoEntry)) {
+                        $zip->setCompressionName($videoEntry, \ZipArchive::CM_STORE);
+                    }
                     $zip->close();
 
                     if (!empty($currentUser['username'])) {
@@ -175,6 +205,11 @@ class DownloadController {
     }
 
     public function downloadBulk($fileIds, array $currentUser = []) {
+        // A large multi-take ZIP can legitimately run past the default 30s
+        // execution limit now that STORE is used; Apache's 300s Timeout remains
+        // the real ceiling.
+        set_time_limit(0);
+
         $files = $this->mocapFileModel->getFilesByIds($fileIds);
 
         if (empty($files)) {
@@ -225,17 +260,25 @@ class DownloadController {
             }
 
             if ($fbxLocalPath && is_file($fbxLocalPath)) {
-                $zip->addFile($fbxLocalPath, 'original/' . $safe);
+                $entry = 'original/' . $safe;
+                // Media files are already compressed; STORE (no deflate) is ~3x
+                // faster with only a ~6% size penalty — see class-level fix notes.
+                if ($zip->addFile($fbxLocalPath, $entry)) {
+                    $zip->setCompressionName($entry, ZipArchive::CM_STORE);
+                }
             } else {
                 // Don't drop silently — record it so the batch is explainable.
                 $missing[] = $safe;
             }
 
-            // Bundle the matching reference video (MP4, or RIGHT MKV fallback) next
-            // to its FBX — the same pairing the single download produces.
+            // Bundle the matching reference video (Mini/RIGHT MKV/full MP4 fallback)
+            // next to its FBX — the same pairing the single download produces.
             $video = $this->findVideoForFile($file, $safe, $rightVideos);
             if ($video) {
-                $zip->addFile($video['path'], 'original/' . $video['entry']);
+                $entry = 'original/' . $video['entry'];
+                if ($zip->addFile($video['path'], $entry)) {
+                    $zip->setCompressionName($entry, ZipArchive::CM_STORE);
+                }
             } else {
                 $missingVideos[] = $safe;
             }
@@ -289,6 +332,11 @@ class DownloadController {
      * inside the ZIP, so an unexpectedly small download is explainable.
      */
     public function downloadEaf($fileIds, array $currentUser = []) {
+        // A large multi-take ZIP can legitimately run past the default 30s
+        // execution limit now that STORE is used; Apache's 300s Timeout remains
+        // the real ceiling.
+        set_time_limit(0);
+
         if (count($fileIds) > self::EAF_BATCH_LIMIT) {
             header('HTTP/1.0 400 Bad Request');
             echo "Too many takes selected (" . count($fileIds) . "). "
@@ -372,6 +420,9 @@ class DownloadController {
             $addedEntries = [];
             foreach ($bundle['files'] as $item) {
                 if ($zip->addFile($item['path'], $item['entry'])) {
+                    // Media files are already compressed; STORE (no deflate) is ~3x
+                    // faster with only a ~6% size penalty — see class-level fix notes.
+                    $zip->setCompressionName($item['entry'], ZipArchive::CM_STORE);
                     $addedEntries[] = $item['entry'];
                     continue;
                 }
