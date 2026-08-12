@@ -331,9 +331,29 @@ class DownloadController {
                 continue;
             }
 
+            $addedEntries = [];
+            $addFailed = false;
             foreach ($paths as $path) {
-                $zip->addFile($path, $take . '/' . basename($path));
+                $entry = $take . '/' . basename($path);
+                if ($zip->addFile($path, $entry)) {
+                    $addedEntries[] = $entry;
+                } else {
+                    $addFailed = true;
+                    break;
+                }
             }
+
+            if ($addFailed) {
+                // A path EafLocator found via is_file() became unreadable/missing by the
+                // time addFile() ran (narrow TOCTOU window). Don't leave a half-added take
+                // in the ZIP, and don't log or count it as delivered.
+                foreach ($addedEntries as $entry) {
+                    $zip->deleteName($entry);
+                }
+                $missing[] = $take . ' (file(s) could not be added to the ZIP — removed or unreadable while the download was being built)';
+                continue;
+            }
+
             $included[] = $file;
         }
 
@@ -349,7 +369,9 @@ class DownloadController {
         if (!empty($missing)) {
             $zip->addFromString(
                 'MISSING_EAF.txt',
-                "No take-level .eaf was found in /web/zin/eaf/zin/ for these takes.\n"
+                "These takes have no files in this ZIP. Either no take-level .eaf was found\n"
+                . "in /web/zin/eaf/zin/, or (see the note on the line, if present) a file could\n"
+                . "not be added while the ZIP was being built.\n"
                 . "(The broadcast-level .eaf is not used as a fallback: it covers the whole\n"
                 . "broadcast and is not time-aligned to an individual take.)\n\n"
                 . implode("\n", $missing) . "\n"
