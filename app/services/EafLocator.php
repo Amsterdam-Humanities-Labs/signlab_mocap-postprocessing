@@ -12,6 +12,8 @@ namespace App\services;
  * shipping it would be silently wrong rather than merely missing.
  */
 class EafLocator {
+    use PathSafety;
+
     private string $eafDir;
 
     public function __construct(string $eafDir = '/web/zin/eaf/zin/') {
@@ -30,7 +32,7 @@ class EafLocator {
         }
 
         $eafPath = $this->eafDir . $safe . '.eaf';
-        if (!is_file($eafPath) || !$this->isWithin($eafPath)) {
+        if (!is_file($eafPath) || !$this->isWithin($eafPath, $this->eafDir)) {
             return [];
         }
 
@@ -40,7 +42,7 @@ class EafLocator {
             if (strpos(basename($srt), '_backup_') !== false) {
                 continue;
             }
-            if (is_file($srt) && $this->isWithin($srt)) {
+            if (is_file($srt) && $this->isWithin($srt, $this->eafDir)) {
                 $found[] = $srt;
             }
         }
@@ -58,28 +60,7 @@ class EafLocator {
             return false;
         }
         $path = $this->eafDir . $safe . '.eaf';
-        return is_file($path) && $this->isWithin($path);
+        return is_file($path) && $this->isWithin($path, $this->eafDir);
     }
 
-    /**
-     * Reduce a (DB-sourced, but still untrusted) take name to a bare basename of
-     * safe characters. The strict character class blocks path traversal and also
-     * keeps glob() metacharacters (*, ?, [) out of the pattern built above.
-     */
-    private function safeName(string $name): string {
-        // Reject if input contains path separators (blocks traversal attempts like ../)
-        if (strpos($name, '/') !== false || strpos($name, '\\') !== false) {
-            return '';
-        }
-        $base = basename($name);
-        return preg_match('/^[A-Za-z0-9._-]+$/', $base) ? $base : '';
-    }
-
-    /** True only if $path resolves to a real file inside the annotation directory. */
-    private function isWithin(string $path): bool {
-        $real = realpath($path);
-        $base = realpath($this->eafDir);
-        return $real !== false && $base !== false
-            && strncmp($real . DIRECTORY_SEPARATOR, $base . DIRECTORY_SEPARATOR, strlen($base) + 1) === 0;
-    }
 }

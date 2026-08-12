@@ -15,6 +15,8 @@ namespace App\services;
  * whose GLB was never exported still ships, with the gap reported in 'missing'.
  */
 class TakeBundleLocator {
+    use PathSafety;
+
     private EafLocator $eafLocator;
     private string $ppDir;
     private string $miniDir;
@@ -96,24 +98,4 @@ class TakeBundleLocator {
         return ['files' => $files, 'missing' => $missing];
     }
 
-    /**
-     * Reduce a DB-sourced name to a safe bare basename. Anything containing a
-     * path separator is rejected outright rather than normalised, and the strict
-     * character class keeps traversal and shell/glob metacharacters out of every
-     * path this class builds.
-     */
-    private function safeName(string $name): string {
-        if ($name === '' || strpos($name, '/') !== false || strpos($name, '\\') !== false) {
-            return '';
-        }
-        return preg_match('/^[A-Za-z0-9._-]+$/', $name) ? $name : '';
-    }
-
-    /** True only if $path resolves to a real file inside $baseDir. */
-    private function isWithin(string $path, string $baseDir): bool {
-        $real = realpath($path);
-        $base = realpath($baseDir);
-        return $real !== false && $base !== false
-            && strncmp($real . DIRECTORY_SEPARATOR, $base . DIRECTORY_SEPARATOR, strlen($base) + 1) === 0;
-    }
 }
