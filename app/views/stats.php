@@ -127,6 +127,7 @@
                                 'original' => ['downloaded', 'bg-blue-100 text-blue-800'],
                                 'processed' => ['downloaded (pp)', 'bg-blue-100 text-blue-800'],
                                 'bulk' => ['downloaded (bulk)', 'bg-blue-100 text-blue-800'],
+                                'eaf' => ['downloaded (eaf)', 'bg-blue-100 text-blue-800'],
                                 'upload' => ['uploaded', 'bg-green-100 text-green-800'],
                                 'mark_processed' => ['processed', 'bg-orange-100 text-orange-800'],
                                 'mark_unprocessed' => ['reverted', 'bg-yellow-100 text-yellow-800'],

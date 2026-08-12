@@ -41,6 +41,7 @@ Capture date extracted from `vicon_files.capture_id` via `SUBSTRING_INDEX(captur
 │   ├── index.php             # File list (requires auth)
 │   ├── upload.php            # Upload handler (requires auth)
 │   ├── download.php          # Download handler (bundles FBX + MKV ZIP)
+│   ├── download-eaf.php      # Batch EAF/SRT download, gated on MCP Klaar status
 │   ├── review-status.php     # Review status API
 │   ├── mark-processed.php    # Toggle processed status API
 │   ├── update-comment.php    # Comment save API
@@ -59,6 +60,8 @@ Capture date extracted from `vicon_files.capture_id` via `SUBSTRING_INDEX(captur
 │   │   ├── MocapFile.php     # Queries vicon_files (not mocap_files)
 │   │   ├── Assignment.php    # Capture date assignments
 │   │   └── Stats.php         # Activity statistics
+│   ├── services/
+│   │   └── EafLocator.php    # Locates take-level .eaf/.srt files for EAF download
 │   └── views/
 │       ├── file-list.php     # Main file browser with sidebar preview
 │       ├── upload-form.php   # Drag-and-drop upload
@@ -131,6 +134,7 @@ mysql -u user -p admin_gebarenoverleg < migrations/002_vicon_files_pp_columns.sq
 mysql -u user -p admin_gebarenoverleg < migrations/003_download_logs.sql
 mysql -u user -p admin_gebarenoverleg < migrations/004_extend_download_logs_actions.sql
 mysql -u user -p admin_gebarenoverleg < migrations/005_vicon_files_comment.sql
+mysql -u user -p admin_gebarenoverleg < migrations/006_download_logs_eaf_type.sql
 ```
 
 ## Important Considerations

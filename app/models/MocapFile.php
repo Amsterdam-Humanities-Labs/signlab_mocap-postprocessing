@@ -1114,6 +1114,20 @@ class MocapFile {
     }
 
     /**
+     * Render the postprocessing status value as the label zinnen.html shows for it.
+     *
+     * Same asymmetry as isKlaar() above: the postprocessing dropdown stores '1'
+     * for "Klaar" and '2' for "Check nodig", not the words themselves — keep this
+     * mapping here, in the one place both the EAF-download manifest and the file
+     * list's MCP badge read it from.
+     */
+    public static function describePostprocessing(?string $pp): string {
+        if ($pp === '1') return 'Klaar';
+        if ($pp === '2') return 'Check nodig';
+        return ($pp === null || $pp === '') ? 'leeg' : $pp;
+    }
+
+    /**
      * MCP postprocessing / tijd-annotatie status per vicon_files row.
      *
      * Follows the same chain as getGlossesForFiles(): the mocap filename's first
