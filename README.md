@@ -135,4 +135,4 @@ php vendor/bin/phpunit           # tests
 php -S localhost:8000 -t public  # quick local server (auth + paths still need production layout)
 ```
 
-See `CLAUDE.md` for a deeper map of the codebase, key tables, and filename conventions.
+See `CLAUDE.md` for conventions and gotchas, and `docs/decisions/` for the reasoning behind each feature.
