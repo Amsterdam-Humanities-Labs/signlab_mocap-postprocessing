@@ -24,16 +24,14 @@ class TakeBundleLocator {
 
     public function __construct(
         EafLocator $eafLocator,
-        string $ppDir   = '/web/gebarenoverleg_media/fbx/post_processed/',
-        // "blackamgic" (m/a transposed) is the real directory name on disk —
-        // a symlink to /mnt/bigstorage/blackmagic_filesMini/. Do not "correct" it.
-        string $miniDir = '/web/gebarenoverleg_media/blackamgic_filesMini/',
-        string $mkvDir  = '/mnt/bigstorage/razerFiles/'
+        ?string $ppDir   = null,   // Paths 'fbx_processed'
+        ?string $miniDir = null,   // Paths 'blackmagic_mini' (note the "blackamgic" spelling there)
+        ?string $mkvDir  = null    // Paths 'razer_mkv'
     ) {
         $this->eafLocator = $eafLocator;
-        $this->ppDir   = rtrim($ppDir, '/') . '/';
-        $this->miniDir = rtrim($miniDir, '/') . '/';
-        $this->mkvDir  = rtrim($mkvDir, '/') . '/';
+        $this->ppDir   = rtrim($ppDir   ?? \App\config\Paths::get('fbx_processed'),   '/') . '/';
+        $this->miniDir = rtrim($miniDir ?? \App\config\Paths::get('blackmagic_mini'), '/') . '/';
+        $this->mkvDir  = rtrim($mkvDir  ?? \App\config\Paths::get('razer_mkv'),       '/') . '/';
     }
 
     /**

@@ -954,11 +954,11 @@ class MocapFile {
     public function getPreviewVideos(array $files): array {
         if (empty($files)) return [];
 
-        // NOTE: "blackamgic" (m/a transposed) is the actual directory name on disk —
-        // a symlink to /mnt/bigstorage/blackmagic_filesMini/. Matching the misspelling
-        // here is deliberate; do not "fix" it back to "blackmagic" or the lookup breaks.
-        $bmDisk = '/web/gebarenoverleg_media/blackamgic_filesMini/';
-        $bmWeb  = '/gebarenoverleg_media/blackamgic_filesMini/';
+        // Directory configured in paths.php ('blackmagic_mini'); see the note
+        // there about its deliberately misspelled name.
+        $bmDisk = \App\config\Paths::dir('blackmagic_mini');
+        $bmWeb  = \App\config\Paths::toUrl($bmDisk);
+        $mkvWeb = rtrim(\App\config\Paths::get('razer_mkv_url'), '/') . '/';
 
         // MKV fallback, keyed by capture_id
         $captureIds = [];
@@ -973,7 +973,7 @@ class MocapFile {
             if ($date !== '' && $mp4Name !== '' && is_file($bmDisk . $date . '/' . $mp4Name)) {
                 $result[$f['id']] = $bmWeb . $date . '/' . $mp4Name;
             } elseif (!empty($mkvByCapture[$f['capture_id']])) {
-                $result[$f['id']] = '/gebarenoverleg_media/razerFiles/' . $mkvByCapture[$f['capture_id']];
+                $result[$f['id']] = $mkvWeb . $mkvByCapture[$f['capture_id']];
             }
         }
         return $result;

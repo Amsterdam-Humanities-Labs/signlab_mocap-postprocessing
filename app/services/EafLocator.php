@@ -16,8 +16,9 @@ class EafLocator {
 
     private string $eafDir;
 
-    public function __construct(string $eafDir = '/web/zin/eaf/zin/') {
-        $this->eafDir = rtrim($eafDir, '/') . '/';
+    /** @param string|null $eafDir defaults to Paths 'eaf_dir' */
+    public function __construct(?string $eafDir = null) {
+        $this->eafDir = rtrim($eafDir ?? \App\config\Paths::get('eaf_dir'), '/') . '/';
     }
 
     /**

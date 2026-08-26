@@ -109,6 +109,8 @@ The Babylon viewers retarget animation GLBs onto a separately loaded Palmer avat
 
 ### File Storage Paths
 
+All storage locations are defined in `paths.php` (documented per key) and read through `App\config\Paths` (`Paths::dir('key')`, `Paths::toUrl($disk)`). Never hardcode a `/web/...` or `/mnt/...` literal in app code; add a key instead. Per-machine overrides go in the gitignored `paths.local.php`. Production defaults:
+
 | Type | Disk Path | Web URL |
 |---|---|---|
 | Original FBX | `/web/gebarenoverleg_media/fbx/CC/` | `/gebarenoverleg_media/fbx/CC/` |

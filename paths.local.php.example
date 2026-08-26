@@ -1,0 +1,14 @@
+<?php
+// Copy to paths.local.php (gitignored) and keep only the keys you change.
+// Every key is documented in paths.php.
+return [
+    'web_root'        => '/var/www/html',
+    'fbx_original'    => '/var/www/html/gebarenoverleg_media/fbx/CC/',
+    'fbx_processed'   => '/var/www/html/gebarenoverleg_media/fbx/post_processed/',
+    'blackmagic_full' => '/var/www/html/gebarenoverleg_media/studioFiles/blackmagic_files/',
+    'blackmagic_mini' => '/var/www/html/gebarenoverleg_media/blackamgic_filesMini/',
+    'razer_mkv'       => '/data/razerFiles/',
+    'razer_mkv_url'   => '/gebarenoverleg_media/razerFiles/',
+    'eaf_dir'         => '/var/www/html/zin/eaf/zin/',
+    'remote_fbx_base_url' => '',   // '' disables the HTTPS fallback download
+];

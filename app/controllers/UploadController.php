@@ -5,6 +5,8 @@ use App\models\MocapFile;
 use App\config\Database;
 use ZipArchive;
 
+use App\config\Paths;
+
 class UploadController {
     private $mocapFileModel;
     private $storageDir;
@@ -12,7 +14,7 @@ class UploadController {
     
     public function __construct() {
         $this->mocapFileModel = new MocapFile();
-        $this->storageDir = '/web/gebarenoverleg_media/fbx/post_processed/';
+        $this->storageDir = Paths::dir('fbx_processed');
         
         if (!is_dir($this->storageDir)) {
             mkdir($this->storageDir, 0755, true);
