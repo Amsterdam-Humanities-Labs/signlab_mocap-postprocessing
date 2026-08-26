@@ -87,6 +87,9 @@ class UploadController {
         // Update database with storage filename (which is the original filename)
         $this->mocapFileModel->markAsProcessed($mocapFile['id'], $storageFilename);
 
+        // Flag the linked sentence (if any) as post-processed
+        $this->mocapFileModel->markSentencePostProcessed($storageFilename);
+
         // Log upload activity
         $this->logUpload($mocapFile['id'], $storageFilename);
 
@@ -159,6 +162,9 @@ class UploadController {
                 
                 // Update database with storage filename (which is the original filename)
                 $this->mocapFileModel->markAsProcessed($mocapFile['id'], $storageFilename);
+
+                // Flag the linked sentence (if any) as post-processed
+                $this->mocapFileModel->markSentencePostProcessed($storageFilename);
 
                 // Log upload activity
                 $this->logUpload($mocapFile['id'], $storageFilename);

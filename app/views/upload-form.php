@@ -99,44 +99,68 @@
     document.addEventListener("dragover", function(e) { e.preventDefault(); });
     document.addEventListener("drop", function(e) { e.preventDefault(); });
 
+    // PHP's max_file_uploads (default 20) silently drops files beyond the limit
+    // when sent in a single request. Send .fbx uploads in batches safely under it
+    // so large selections (e.g. 50 files) all get through.
+    var BATCH_SIZE = 15;
+
     function uploadFiles(files) {
+        var fileArr = Array.prototype.slice.call(files);
+        var overwrite = document.getElementById("allowOverwrite").checked;
+        var zip = fileArr.filter(function(f) { return f.name.toLowerCase().endsWith(".zip"); })[0];
+        var fbx = fileArr.filter(function(f) { return !f.name.toLowerCase().endsWith(".zip"); });
+
         document.getElementById("uploadProgress").classList.remove("hidden");
         document.getElementById("results").classList.add("hidden");
-        document.getElementById("progressText").textContent = "Uploading " + files.length + " file(s)...";
 
-        var formData = new FormData();
-        var hasZip = false;
+        var green = [], red = [];
 
-        for (var i = 0; i < files.length; i++) {
-            if (files[i].name.toLowerCase().endsWith(".zip")) {
-                formData.append("zipfile", files[i]);
-                hasZip = true;
-                break;
+        function sendBatch(batch, isZip) {
+            var fd = new FormData();
+            if (isZip) {
+                fd.append("zipfile", batch[0]);
             } else {
-                formData.append("files[]", files[i]);
+                batch.forEach(function(f) { fd.append("files[]", f); });
             }
+            if (overwrite) { fd.append("allow_overwrite", "1"); }
+            return fetch("upload.php", { method: "POST", body: fd })
+                .then(function(r) { return r.text(); })
+                .then(function(html) {
+                    var doc = new DOMParser().parseFromString(html, "text/html");
+                    doc.querySelectorAll(".bg-green-50 li").forEach(function(li) { green.push(li.textContent.trim()); });
+                    doc.querySelectorAll(".bg-red-50 li").forEach(function(li) { red.push(li.textContent.trim()); });
+                });
         }
 
-        if (document.getElementById("allowOverwrite").checked) {
-            formData.append("allow_overwrite", "1");
+        // Build the ordered list of batches (a zip goes as one request; fbx are chunked).
+        var batches = [];
+        if (zip) { batches.push({ files: [zip], isZip: true }); }
+        for (var i = 0; i < fbx.length; i += BATCH_SIZE) {
+            batches.push({ files: fbx.slice(i, i + BATCH_SIZE), isZip: false });
         }
 
-        fetch("upload.php", { method: "POST", body: formData })
-            .then(function(r) { return r.text(); })
-            .then(function(html) {
+        var total = zip ? 1 : fbx.length;
+        var done = 0;
+
+        function runNext(idx) {
+            if (idx >= batches.length) {
                 document.getElementById("uploadProgress").classList.add("hidden");
-                // Parse the result HTML for success/error lists
-                var parser = new DOMParser();
-                var doc = parser.parseFromString(html, "text/html");
-                showResults(doc);
-            })
-            .catch(function(e) {
-                document.getElementById("uploadProgress").classList.add("hidden");
-                alert("Upload failed: " + e.message);
-            });
+                renderResults(green, red);
+                return;
+            }
+            var b = batches[idx];
+            document.getElementById("progressText").textContent = b.isZip
+                ? "Uploading zip..."
+                : ("Uploading " + (done + 1) + "–" + (done + b.files.length) + " of " + total + "...");
+            sendBatch(b.files, b.isZip)
+                .catch(function(e) { red.push("Batch failed: " + e.message); })
+                .then(function() { done += b.files.length; runNext(idx + 1); });
+        }
+
+        runNext(0);
     }
 
-    function showResults(doc) {
+    function renderResults(green, red) {
         var results = document.getElementById("results");
         var successList = document.getElementById("successList");
         var errorList = document.getElementById("errorList");
@@ -148,39 +172,16 @@
         successList.classList.add("hidden");
         errorList.classList.add("hidden");
 
-        // Extract from upload-result.php HTML
-        var greenItems = doc.querySelectorAll(".text-green-700 li, .bg-green-50 li");
-        var redItems = doc.querySelectorAll(".text-red-700 li, .bg-red-50 li");
-
-        if (greenItems.length) {
+        if (green.length) {
             successList.classList.remove("hidden");
-            greenItems.forEach(function(li) {
-                var el = document.createElement("li");
-                el.textContent = li.textContent;
-                successItems.appendChild(el);
-            });
+            successList.querySelector("h3").textContent = "Successfully Processed (" + green.length + ")";
+            green.forEach(function(t) { var el = document.createElement("li"); el.textContent = t; successItems.appendChild(el); });
         }
-
-        if (redItems.length) {
+        if (red.length) {
             errorList.classList.remove("hidden");
-            redItems.forEach(function(li) {
-                var el = document.createElement("li");
-                el.textContent = li.textContent;
-                errorItems.appendChild(el);
-            });
+            errorList.querySelector("h3").textContent = "Errors / Skipped (" + red.length + ")";
+            red.forEach(function(t) { var el = document.createElement("li"); el.textContent = t; errorItems.appendChild(el); });
         }
-
-        // If no items found, try to get summary from the banner
-        if (!greenItems.length && !redItems.length) {
-            var banner = doc.querySelector("[class*='rounded-lg shadow-lg p-8']");
-            if (banner) {
-                successList.classList.remove("hidden");
-                var el = document.createElement("li");
-                el.textContent = banner.textContent.trim();
-                successItems.appendChild(el);
-            }
-        }
-
         results.classList.remove("hidden");
     }
     </script>

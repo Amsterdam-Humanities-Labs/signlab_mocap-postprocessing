@@ -9,89 +9,428 @@
     <script src="https://cdn.babylonjs.com/inspector/babylon.inspector.bundle.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a2e; }
-        canvas { width: 100%; height: 100%; display: block; }
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #1F242B; }
+        canvas { width: 100%; height: 100%; display: block; outline: none; }
+        button, label, input { font-family: sans-serif; }
+
         #ui { position: absolute; top: 10px; left: 10px; z-index: 10; display: flex; gap: 8px; }
         #ui button, #ui label {
             background: rgba(255,255,255,0.9); border: none; border-radius: 6px;
-            padding: 6px 14px; font-size: 13px; cursor: pointer; font-family: sans-serif;
+            padding: 6px 14px; font-size: 13px; cursor: pointer;
         }
         #ui button:hover, #ui label:hover { background: #fff; }
         #ui label { display: flex; align-items: center; gap: 6px; }
-        #status {
-            position: absolute; bottom: 10px; left: 10px; z-index: 10;
-            color: #aaa; font-size: 12px; font-family: monospace;
+
+        #changeAvatarBtn {
+            position: absolute; top: 10px; right: 10px; z-index: 10;
+            background: rgba(24,24,24,0.85); color: #f2f2f2;
+            border: 1px solid rgba(255,255,255,0.2); border-radius: 6px;
+            padding: 6px 14px; font-size: 13px; cursor: pointer; backdrop-filter: blur(6px);
         }
+        #changeAvatarBtn:hover { background: rgba(40,40,40,0.95); }
+
+        #status {
+            position: absolute; bottom: 64px; left: 10px; z-index: 10;
+            color: #aaa; font-size: 12px; font-family: monospace; pointer-events: none;
+        }
+
+        /* Playbar */
+        #playbar {
+            position: fixed; left: 50%; bottom: 14px; z-index: 10;
+            display: grid; grid-template-columns: 68px minmax(200px, 36vw) 92px 56px auto;
+            align-items: center; gap: 10px; padding: 9px 12px;
+            border: 1px solid rgba(255,255,255,0.16); border-radius: 8px;
+            background: rgba(24,24,24,0.88); color: #f2f2f2;
+            box-shadow: 0 12px 36px rgba(0,0,0,0.28); transform: translateX(-50%);
+            backdrop-filter: blur(10px);
+        }
+        .pb-btn {
+            min-width: 56px; height: 30px; padding: 0 10px;
+            border: 1px solid rgba(255,255,255,0.2); border-radius: 6px;
+            background: rgba(255,255,255,0.08); color: #f5f5f5; font-size: 12px; cursor: pointer;
+        }
+        .pb-btn:disabled { cursor: default; opacity: 0.45; }
+        #pbSlider { width: 100%; accent-color: #9fd7ff; }
+        #pbFrame { min-width: 86px; font-variant-numeric: tabular-nums; font-size: 12px;
+            text-align: right; color: rgba(255,255,255,0.8); }
+        .pb-hands { display: flex; gap: 6px; }
+        .pb-icon {
+            width: 30px; height: 30px; padding: 0; cursor: pointer;
+            border: 1px solid rgba(255,255,255,0.2); border-radius: 50%;
+            background: rgba(255,255,255,0.08); color: #f5f5f5; font-size: 12px; font-weight: 700;
+        }
+        .pb-icon.active { border-color: #9fd7ff; background: rgba(159,215,255,0.24); color: #fff; }
+
+        /* Backdrop color panel */
+        #bgPanel {
+            position: absolute; bottom: 14px; right: 10px; z-index: 10;
+            display: flex; align-items: center; gap: 6px; padding: 7px 9px;
+            border: 1px solid rgba(255,255,255,0.16); border-radius: 8px;
+            background: rgba(24,24,24,0.82); backdrop-filter: blur(8px);
+        }
+        #bgPanel .swatch {
+            width: 20px; height: 20px; border-radius: 4px; cursor: pointer;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        #bgPanel input[type=color] { width: 26px; height: 24px; border: none; background: none; cursor: pointer; }
+
+        /* Avatar picker overlay */
+        #picker {
+            position: fixed; inset: 0; z-index: 50; display: none;
+            align-items: center; justify-content: center; flex-direction: column; gap: 22px;
+            background: radial-gradient(circle at 50% 35%, #2a3038, #14171c);
+            color: #f2f2f2; font-family: sans-serif;
+        }
+        #picker.show { display: flex; }
+        #picker h1 { font-size: 22px; font-weight: 600; letter-spacing: 0.5px; }
+        #pickerCards { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; max-width: 90vw; }
+        .avatar-card {
+            width: 170px; cursor: pointer; border-radius: 12px; overflow: hidden;
+            background: rgba(255,255,255,0.06); border: 2px solid rgba(255,255,255,0.12);
+            transition: border-color .15s, transform .15s;
+        }
+        .avatar-card:hover { border-color: #9fd7ff; transform: translateY(-3px); }
+        .avatar-card img { width: 100%; height: 190px; object-fit: cover; display: block; background: #20242b; }
+        .avatar-card .label { padding: 10px 12px; font-size: 14px; }
+        #picker .keepDefault { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #cfd6df; }
     </style>
 </head>
 <body>
     <canvas id="renderCanvas"></canvas>
+
     <div id="ui">
         <label>Skeletal (.glb)
             <input type="file" id="skeletalFile" accept=".glb,.gltf" style="display:none">
             <button onclick="document.getElementById('skeletalFile').click()">Load</button>
         </label>
-        <button onclick="playAll()">Play All</button>
     </div>
+    <button id="changeAvatarBtn">Change Avatar</button>
     <div id="status">Loading avatar...</div>
 
-    <script>
-    var AVATAR_URL = "/animMIDI/babyloncc/dist/";
-    var AVATAR_FILE = "Palmer_optimized_ktx2.glb";
-    var EXCLUDED = ["cc_base_eyeocclusion","cc_base_tear_ducts","cc_base_tearline",
-        "chin_curtain_sparse","male_bushy","mustache_horseshoe","stubble_neck",
-        "cc_base_eye_primitive1","cc_base_eye_primitive3"];
+    <!-- Playbar -->
+    <div id="playbar">
+        <button id="pbPlay" class="pb-btn" disabled>Play</button>
+        <input id="pbSlider" type="range" min="0" max="1" step="1" value="0" disabled>
+        <div id="pbFrame">No animation</div>
+        <button id="pbSpeed" class="pb-btn">1x</button>
+        <div class="pb-hands">
+            <button id="pbHandL" class="pb-icon" title="Focus left hand">L</button>
+            <button id="pbHandR" class="pb-icon" title="Focus right hand">R</button>
+        </div>
+    </div>
 
+    <!-- Backdrop color -->
+    <div id="bgPanel"></div>
+
+    <!-- Avatar picker -->
+    <div id="picker">
+        <h1>Select an avatar</h1>
+        <div id="pickerCards"></div>
+        <label class="keepDefault"><input type="checkbox" id="keepDefault"> Keep as default</label>
+    </div>
+
+    <script>
+    "use strict";
+
+    /* =====================================================================
+       CONFIG  (ported from upstream BabylonCC src/config — kept tunable here
+       so the viewer stays a no-build single file)
+       ===================================================================== */
+    var DIST = "/animMIDI/babyloncc/dist/";
+
+    var AVATAR_CONFIG = [
+        {
+            id: "palmer-polo-1024-uastc",
+            name: "Palmer Polo",
+            glbUrl: DIST + "PalmerPolo1024uastc.glb",
+            thumbnailUrl: DIST + "thumbnails/Palmer.png",
+            idleAnimationPath: DIST + "palmer_Idle.glb"
+        },
+        {
+            // Best-effort second option — retarget not verified for this rig.
+            id: "glasses-guy-signlab",
+            name: "Glasses Guy",
+            glbUrl: DIST + "glassesGuySignLab.glb",
+            thumbnailUrl: DIST + "thumbnails/placeholder.png",
+            idleAnimationPath: DIST + "palmer_Idle.glb"
+        }
+    ];
+    var AVATAR_DEFAULT_STORAGE_KEY = "babyloncc.defaultAvatarId";
+
+    var RENDER_CONFIG = {
+        hardwareScalingLevel: 1.5,          // 1.0 = sharper, higher = faster/softer
+        clearColor: "#1F242BFF",
+        imageProcessing: { toneMappingEnabled: true, exposure: 1.0, contrast: 1.0 },
+        lighting: {
+            environmentUrl: DIST + "environment.envbin",
+            iblIntensity: 0.35,
+            sunIntensity: 1.0,
+            sunDirection: { x: -0.4, y: -1.0, z: -0.3 },
+            hemiFillEnabled: true,
+            hemiIntensity: 0.25,
+            hemiGroundColor: "#262626",
+            hemiDiffuseColor: "#FFFFFF",
+            hemiSpecularColor: "#333333",
+            studioThreePoint: {
+                enabled: true,
+                target: { x: 0, y: 1.25, z: 0 },
+                key:  { position: { x: -2.4, y: 3.2, z: 2.8 }, intensity: 70, color: "#ffe5ba", angle: 0.85, exponent: 1.8 },
+                fill: { position: { x: 2.6, y: 2.1, z: 2.0 }, intensity: 50, color: "#DDEBFF", angle: 1.1,  exponent: 1.3 },
+                rim:  { position: { x: 1.5, y: 2.7, z: -2.8 }, intensity: 30, color: "#E8F5FF", angle: 0.75, exponent: 2.2 }
+            }
+        },
+        shadows: {
+            // Master switch. Shadows re-render the skinned 34 MB avatar into a
+            // depth map EVERY frame — the single biggest per-frame cost. Embedded
+            // in the (heavy) file-list page that starved the render loop to ~1 fps,
+            // so the avatar looked frozen while the off-thread video kept moving.
+            // Off by default for the preview; flip to true for a heavier standalone look.
+            enabled: false,
+            mapSize: 1024,
+            usePercentageCloserFiltering: true,
+            studio: { enabled: false, mapSize: 1024, key: true, fill: false, rim: true }
+        }
+    };
+
+    var CAMERA_CONFIG = {
+        focusBoneNames: ["spine_05"],
+        fallbackTarget: { x: 0, y: 1.35, z: 0 },
+        targetOffset: { x: 0, y: 0.05, z: 0 },
+        // -PI/2 views the avatar's front (the rig faces -Z); the old viewer used
+        // this. Upstream instead flips the avatar 180deg and uses +PI/2 — we keep
+        // the avatar unrotated, so the front-facing angle lives here.
+        alpha: -Math.PI / 2,
+        beta: 1.6,
+        radius: 1.7
+    };
+
+    var MESH_CONFIG = {
+        excluded: ["cc_base_eyeocclusion","cc_base_tear_ducts","cc_base_tearline",
+            "chin_curtain_sparse","male_bushy","mustache_horseshoe","stubble_neck",
+            "cc_base_eye_primitive1","cc_base_eye_primitive3"],
+        material: { specularIntensity: 0.15, environmentIntensity: 0.25, roughness: 0.48, metallic: 0 },
+        alphaBlend: [
+            { tokens: ["hair"], backFaceCulling: true, renderingGroupId: 0 },
+            { tokens: ["eyelash"] }
+        ],
+        roughnessOverrides: [
+            { tokens: ["ss_slash_neck_top"], min: 0.64 },
+            { tokens: ["beard","brow","female_angled"], min: 0.6 }
+        ],
+        scalp: { tokens: ["scalp"], renderingGroupId: 0, alphaIndex: 0 }
+    };
+
+    var PLAYER_CONTROLS_CONFIG = {
+        speedLevels: [1, 0.1, 0.3, 0.5],
+        seekStepFrames: 5,
+        pollMs: 80,
+        handTracking: { leftBoneNames: ["hand_l"], rightBoneNames: ["hand_r"], focusRadius: 1.35 }
+    };
+
+    var BG_SWATCHES = ["#36383b","#1F242B","#2b2f3a","#4a4a4a","#0e6f60","#7c5a3a"];
+
+    // Reference-video brightness. The scene uses ACES tone mapping, which darkens
+    // the video plane; the video gets its own image-processing pass that skips
+    // tone mapping and scales exposure by this factor. 1.0 = native, >1 brighter.
+    var VIDEO_BRIGHTNESS = 1.8;
+
+    // Blender's FBX->GLB export is deterministic: animations always come out in
+    // meters (pelvis rest Z = 1.0035), while the CC avatars are authored in
+    // centimeters (pelvis rest Z = 100.35). The conversion is a fixed x100,
+    // verified for PalmerPolo1024uastc.glb too. Do not replace with a runtime
+    // detector — see CLAUDE.md "Retargeting Notes" (eye-misalignment pitfall).
+    var POS_SCALE = 100;
+
+    /* =====================================================================
+       URL params (iframe contract — must stay backwards compatible)
+       ===================================================================== */
     var params = new URLSearchParams(window.location.search);
     var animUrl = params.get("anim");
     var videoUrl = params.get("video");
     var scaleMult = parseFloat(params.get("scale-skeletal-anim") || "1") || 1;
 
+    /* =====================================================================
+       Avatar selection (non-blocking: default loads immediately in the iframe)
+       ===================================================================== */
+    function getAvatarById(id) { return AVATAR_CONFIG.find(function(a){ return a.id === id; }) || null; }
+    var selectedAvatar = getAvatarById(localStorage.getItem(AVATAR_DEFAULT_STORAGE_KEY)) || AVATAR_CONFIG[0];
+
+    /* =====================================================================
+       Engine + scene
+       ===================================================================== */
     var canvas = document.getElementById("renderCanvas");
     var engine = new BABYLON.Engine(canvas, true);
-    engine.setHardwareScalingLevel(1.5);
-    var scene = new BABYLON.Scene(engine);
-    scene.createDefaultCameraOrLight(true, true, true);
-    var cam = scene.activeCamera;
-    if (cam) { cam.alpha = Math.PI/2; cam.beta = 1.2; cam.radius = 2.2; cam.minZ = 0.001; cam.lowerRadiusLimit = 0.005; }
-    window.addEventListener("resize", function() { engine.resize(); });
+    engine.setHardwareScalingLevel(RENDER_CONFIG.hardwareScalingLevel);
 
-    // Debug inspector — toggle with 'i' key
+    var scene = new BABYLON.Scene(engine);
+    scene.clearColor = BABYLON.Color4.FromHexString(RENDER_CONFIG.clearColor);
+    scene.createDefaultCamera(true, true, true);   // ArcRotate camera only (no auto light)
+    var cam = scene.activeCamera;
+    if (cam) { cam.minZ = 0.001; cam.lowerRadiusLimit = 0.005; cam.alpha = Math.PI/2; cam.beta = 1.2; cam.radius = 2.2; }
+    window.addEventListener("resize", function(){ engine.resize(); });
+
+    // Inspector — toggle with 'i'
     scene.debugLayer.hide();
     window.addEventListener("keydown", function(e) {
         if (e.key === "i" || e.key === "I") {
-            if (scene.debugLayer.isVisible()) scene.debugLayer.hide();
-            else scene.debugLayer.show();
+            if (scene.debugLayer.isVisible()) scene.debugLayer.hide(); else scene.debugLayer.show();
         }
+        if (e.key === "j" || e.key === "J") focusCameraOnAvatar();
     });
 
-    var currentGroups = [];
+    function setStatus(msg) { document.getElementById("status").textContent = msg; }
+    function vec(c) { return new BABYLON.Vector3(c.x, c.y, c.z); }
+    function col(hex) { return BABYLON.Color3.FromHexString(hex); }
+
+    /* =====================================================================
+       Lighting rig (port of src/babylon/lighting.ts)
+       ===================================================================== */
+    function setupLighting() {
+        var L = RENDER_CONFIG.lighting, S = RENDER_CONFIG.shadows, IP = RENDER_CONFIG.imageProcessing;
+
+        scene.environmentIntensity = L.iblIntensity;
+        scene.imageProcessingConfiguration.toneMappingEnabled = IP.toneMappingEnabled;
+        scene.imageProcessingConfiguration.toneMappingType = BABYLON.ImageProcessingConfiguration.TONEMAPPING_ACES;
+        scene.imageProcessingConfiguration.exposure = IP.exposure;
+        scene.imageProcessingConfiguration.contrast = IP.contrast;
+
+        // Prefiltered IBL (.envbin is a standard Babylon .env; force the loader).
+        var envTex = BABYLON.CubeTexture.CreateFromPrefilteredData(L.environmentUrl, scene, ".env");
+        envTex.onLoadObservable.addOnce(function(){ scene.environmentTexture = envTex; });
+
+        var sun = new BABYLON.DirectionalLight("sun", vec(L.sunDirection).normalize(), scene);
+        sun.intensity = L.sunIntensity;
+        sun.position = new BABYLON.Vector3(50, 80, 50);
+        sun.shadowMinZ = 0.1; sun.shadowMaxZ = 250;
+
+        var sunShadow = null;
+        if (S.enabled) {
+            sunShadow = new BABYLON.ShadowGenerator(S.mapSize, sun);
+            sunShadow.usePercentageCloserFiltering = S.usePercentageCloserFiltering;
+            sunShadow.filteringQuality = BABYLON.ShadowGenerator.QUALITY_HIGH;
+        }
+
+        var hemi = null;
+        if (L.hemiFillEnabled) {
+            hemi = new BABYLON.HemisphericLight("hemiFill", new BABYLON.Vector3(0, 1, 0), scene);
+            hemi.intensity = L.hemiIntensity;
+            hemi.groundColor = col(L.hemiGroundColor);
+            hemi.diffuse = col(L.hemiDiffuseColor);
+            hemi.specular = col(L.hemiSpecularColor);
+        }
+
+        var studioGens = [];
+        function makeStudioLight(name, o, target, castsShadow) {
+            var pos = vec(o.position);
+            var dir = vec(target).subtract(pos).normalize();
+            var sp = new BABYLON.SpotLight(name, pos, dir, o.angle, o.exponent, scene);
+            sp.intensity = o.intensity; sp.diffuse = col(o.color); sp.specular = col(o.color);
+            if (S.studio.enabled && castsShadow) {
+                var g = new BABYLON.ShadowGenerator(S.studio.mapSize, sp);
+                g.usePercentageCloserFiltering = S.usePercentageCloserFiltering;
+                g.filteringQuality = BABYLON.ShadowGenerator.QUALITY_HIGH;
+                studioGens.push(g);
+            }
+        }
+        var tp = L.studioThreePoint;
+        if (tp.enabled) {
+            makeStudioLight("studioKey",  tp.key,  tp.target, S.studio.key);
+            makeStudioLight("studioFill", tp.fill, tp.target, S.studio.fill);
+            makeStudioLight("studioRim",  tp.rim,  tp.target, S.studio.rim);
+        }
+
+        return {
+            addShadowCaster: function(mesh) {
+                if (sunShadow) sunShadow.addShadowCaster(mesh);
+                studioGens.forEach(function(g){ g.addShadowCaster(mesh); });
+            }
+        };
+    }
+
+    /* =====================================================================
+       Backdrop (port of src/babylon/loadBackdrop.ts)
+       ===================================================================== */
+    var backdropMaterial = null;
+    async function loadBackdrop() {
+        var res = await BABYLON.SceneLoader.ImportMeshAsync("", DIST, "Backdrop.glb", scene);
+        var root = new BABYLON.TransformNode("Backdrop", scene);
+        var mat = new BABYLON.PBRMaterial("Backdrop_Matte_Grey", scene);
+        mat.albedoColor = col("#36383b");
+        mat.roughness = 0.92; mat.metallic = 0;
+        mat.specularIntensity = 0.18; mat.environmentIntensity = 0.18;
+        mat.backFaceCulling = false;
+
+        var imported = res.transformNodes.concat(res.meshes);
+        var set = new Set(imported);
+        imported.filter(function(n){ return !n.parent || !set.has(n.parent); })
+                .forEach(function(n){ n.parent = root; });
+        res.meshes.forEach(function(m){ m.alwaysSelectAsActiveMesh = true; m.receiveShadows = true; m.material = mat; });
+
+        backdropMaterial = mat;
+        return root;
+    }
+
+    /* =====================================================================
+       Avatar (port of src/babylon/loadAvatar.ts + meshConfig.ts material rules)
+       ===================================================================== */
     var boneMap = new Map();
     var nodeMap = new Map();
+    var avatarRoot = null;
 
-    function setStatus(msg) { document.getElementById("status").textContent = msg; }
+    function anyToken(name, tokens) { return tokens.some(function(t){ return name.includes(t); }); }
+    function isExcluded(name) {
+        var l = name.toLowerCase();
+        return MESH_CONFIG.excluded.some(function(ex){ return l.includes(ex); });
+    }
 
-    async function loadAvatar() {
-        var result = await BABYLON.SceneLoader.ImportMeshAsync("", AVATAR_URL, AVATAR_FILE, scene);
-        var avatarRoot = result.transformNodes[0] || result.meshes.find(function(m){return !m.parent;}) || new BABYLON.TransformNode("avatarRoot", scene);
-        if (avatarRoot.scaling && avatarRoot.scaling.x === 0.01) avatarRoot.scaling.set(1,1,1);
+    async function loadAvatar(cfg) {
+        var i = cfg.glbUrl.lastIndexOf("/");
+        var res = await BABYLON.SceneLoader.ImportMeshAsync("", cfg.glbUrl.substring(0,i+1), cfg.glbUrl.substring(i+1), scene);
 
-        result.meshes.forEach(function(m) {
-            var lower = m.name.toLowerCase();
-            if (EXCLUDED.some(function(ex){return lower.includes(ex.toLowerCase());})) { m.setEnabled(false); return; }
+        var root = new BABYLON.TransformNode("Avatar", scene);
+        var imported = res.transformNodes.concat(res.meshes);
+        var set = new Set(imported);
+        var top = imported.filter(function(n){ return n !== root && (!n.parent || !set.has(n.parent)); });
+        if (!top.length) {
+            res.meshes.forEach(function(m){ if (!m.parent) m.parent = root; });
+        } else {
+            top.forEach(function(n){ n.parent = root; });
+        }
+        // Reset the cm->m armature scale baked by the exporter (0.01) so bones
+        // sit at their authored centimeter positions (matches POS_SCALE = 100).
+        top.forEach(function(n){ if (n.scaling && n.scaling.x === 0.01) n.scaling.set(1,1,1); });
+
+        var M = MESH_CONFIG.material;
+        res.meshes.forEach(function(m) {
+            if (isExcluded(m.name)) { m.setEnabled(false); return; }
             m.alwaysSelectAsActiveMesh = true;
             var mat = m.material;
             if (!mat) return;
             var n = (m.name + " " + mat.name).toLowerCase();
-            if (n.includes("hair")) { mat.backFaceCulling = true; m.renderingGroupId = 0; mat.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND; }
-            else if (n.includes("eyelash")) { mat.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND; }
-            else if (n.includes("brow")) { mat.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND; }
-            else if (n.includes("scalp")) { m.renderingGroupId = 0; m.alphaIndex = 0; }
-            else { mat.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_OPAQUE; }
+
+            mat.specularIntensity = M.specularIntensity;
+            mat.environmentIntensity = M.environmentIntensity;
+            if (mat.roughness !== undefined) mat.roughness = M.roughness;
+            if (mat.metallic !== undefined) mat.metallic = M.metallic;
+
+            var ab = MESH_CONFIG.alphaBlend.find(function(r){ return anyToken(n, r.tokens); });
+            var ro = MESH_CONFIG.roughnessOverrides.find(function(r){ return anyToken(n, r.tokens); });
+            if (ab) {
+                if (typeof ab.backFaceCulling === "boolean") mat.backFaceCulling = ab.backFaceCulling;
+                if (typeof ab.renderingGroupId === "number") m.renderingGroupId = ab.renderingGroupId;
+                mat.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND;
+            } else if (ro && mat.roughness !== undefined) {
+                mat.roughness = Math.max(mat.roughness, ro.min);
+            } else if (anyToken(n, MESH_CONFIG.scalp.tokens)) {
+                m.renderingGroupId = MESH_CONFIG.scalp.renderingGroupId; m.alphaIndex = MESH_CONFIG.scalp.alphaIndex;
+            } else {
+                mat.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_OPAQUE;
+            }
         });
 
-        scene.transformNodes.forEach(function(n) { if (n.name) nodeMap.set(n.name, n); });
-        scene.meshes.forEach(function(m) { if (m.name) nodeMap.set(m.name, m); });
+        // Retarget lookup maps (name + bone + linked-node), unchanged approach.
+        scene.transformNodes.forEach(function(n){ if (n.name) nodeMap.set(n.name, n); });
+        scene.meshes.forEach(function(m){ if (m.name) nodeMap.set(m.name, m); });
         scene.skeletons.forEach(function(skel) {
             skel.bones.forEach(function(bone) {
                 if (!bone.name) return;
@@ -101,28 +440,22 @@
                 if (linked && linked.name && linked.name !== bone.name) boneMap.set(linked.name, bone);
             });
         });
-        console.log("[Avatar] meshes:" + result.meshes.length + " bones:" + boneMap.size + " nodes:" + nodeMap.size);
-        return avatarRoot;
+        console.log("[Avatar] " + cfg.name + " meshes:" + res.meshes.length + " bones:" + boneMap.size + " nodes:" + nodeMap.size);
+        return root;
     }
 
-    // Blender's FBX→GLB export is deterministic: animations always come out in meters
-    // (pelvis rest Z = 1.0035), while Palmer is authored in centimeters (pelvis rest Z = 100.35).
-    // The conversion is a fixed ×100. Previously we auto-detected the ratio from the pelvis
-    // first keyframe, but when actors didn't start in rest pose the ratio drifted to 102–108
-    // and that 2–8% error pushed small local offsets like l_eye (~0.078) several mm out of
-    // their sockets. Hardcoding 100 is correct and robust.
-    var POS_SCALE = 100;
-
+    /* =====================================================================
+       Retargeting (UNCHANGED proven core; POS_SCALE x100)
+       ===================================================================== */
     function retarget(srcGroup) {
         var dst = new BABYLON.AnimationGroup(srcGroup.name + "_retarget", scene);
         var posScale = POS_SCALE * scaleMult;
-        console.log("[Retarget] posScale=" + posScale.toFixed(2));
-
         var matched = 0, miss = 0;
+
         srcGroup.targetedAnimations.forEach(function(ta) {
             var anim = ta.animation, tgt = ta.target;
-            var name = tgt && tgt.name || "";
-            var cls = tgt && tgt.getClassName ? tgt.getClassName() : "";
+            var name = (tgt && tgt.name) || "";
+            var cls = (tgt && tgt.getClassName) ? tgt.getClassName() : "";
             var newTarget = null;
 
             if (cls === "Bone") {
@@ -130,10 +463,10 @@
                 var bone = (k && boneMap.get(k)) || boneMap.get(tgt.name) || null;
                 newTarget = bone && bone.getTransformNode ? (bone.getTransformNode() || bone) : bone;
             } else if (cls === "MorphTarget") {
-                return;
+                return; // facial morphs are out of scope (no production data)
             } else if (name) {
-                var bone = boneMap.get(name) || null;
-                newTarget = bone && bone.getTransformNode ? (bone.getTransformNode() || bone) : (nodeMap.get(name) || null);
+                var b2 = boneMap.get(name) || null;
+                newTarget = b2 && b2.getTransformNode ? (b2.getTransformNode() || b2) : (nodeMap.get(name) || null);
             }
 
             if (newTarget) {
@@ -142,125 +475,344 @@
                     var sa = anim.clone();
                     sa.setKeys(sa.getKeys().map(function(key) {
                         var v = key.value;
-                        return (v && v.x !== undefined) ? {frame:key.frame, value:new BABYLON.Vector3(v.x*posScale,v.y*posScale,v.z*posScale)} : key;
+                        return (v && v.x !== undefined)
+                            ? { frame: key.frame, value: new BABYLON.Vector3(v.x*posScale, v.y*posScale, v.z*posScale),
+                                inTangent: key.inTangent, outTangent: key.outTangent }
+                            : key;
                     }));
                     dst.addTargetedAnimation(sa, newTarget);
                 } else {
                     dst.addTargetedAnimation(anim, newTarget);
                 }
-            } else {
-                miss++;
-                if (miss <= 3) console.log("[Retarget] MISS: " + name + " class=" + cls + " prop=" + anim.targetProperty);
-            }
+            } else { miss++; }
         });
-        console.log("[Retarget] matched=" + matched + " miss=" + miss + " total=" + dst.targetedAnimations.length);
+        console.log("[Retarget] " + srcGroup.name + " matched=" + matched + " miss=" + miss);
         dst.loopAnimation = true;
         return dst;
     }
 
-    function stopAll() { currentGroups.forEach(function(g){try{g.stop();}catch(e){}try{g.dispose();}catch(e){}}); currentGroups=[]; }
-    function playAll() { currentGroups.forEach(function(g){g.play(true);}); }
+    /* =====================================================================
+       Animation controller (skeletal-only; feeds the playbar)
+       ===================================================================== */
+    var currentGroups = [];
+    var idleGroups = [];
+    var speedRatio = 1.0;
 
-    var bgVideo = null;
+    function stopGroups(groups) {
+        groups.forEach(function(g){ try{g.stop();}catch(e){} try{g.dispose();}catch(e){} });
+    }
 
+    async function retargetContainer(rootUrl, file, label) {
+        var container;
+        try {
+            container = file
+                ? await BABYLON.SceneLoader.LoadAssetContainerAsync("file:", file, scene)
+                : await BABYLON.SceneLoader.LoadAssetContainerAsync(rootUrl.substring(0,rootUrl.lastIndexOf("/")+1), rootUrl.substring(rootUrl.lastIndexOf("/")+1), scene);
+        } catch (e) { console.error("[" + label + "]", e); return []; }
+        var groups = (container.animationGroups || []).map(retarget);
+        container.dispose();
+        return groups;
+    }
+
+    async function loadIdle() {
+        if (!selectedAvatar.idleAnimationPath) return;
+        idleGroups = await retargetContainer(selectedAvatar.idleAnimationPath, null, "Idle");
+        idleGroups.forEach(function(g){ g.loopAnimation = true; g.speedRatio = speedRatio; g.play(true); });
+        if (idleGroups.length) console.log("[Idle] playing");
+    }
+    function stopIdle() { stopGroups(idleGroups); idleGroups = []; }
+
+    async function loadAnim(rootUrl, file) {
+        setStatus("Loading animation...");
+        var groups = await retargetContainer(rootUrl, file, "Anim");
+        if (!groups.length) { setStatus("No animations"); return; }
+        stopIdle();
+        stopGroups(currentGroups);
+        currentGroups = groups;
+        speedRatio = 1.0;
+        currentGroups.forEach(function(g){ g.speedRatio = speedRatio; g.play(true); });
+        setStatus("Playing " + currentGroups.length + " group(s)");
+        Playbar.refresh();
+    }
+
+    // getState shim used by the playbar
+    function getFrameRange() {
+        var ranges = currentGroups.map(function(g){ return { from: Number(g.from), to: Number(g.to) }; })
+            .filter(function(r){ return isFinite(r.from) && isFinite(r.to); });
+        if (!ranges.length) return { from: 0, to: 0 };
+        return { from: Math.min.apply(null, ranges.map(function(r){return r.from;})),
+                 to: Math.max.apply(null, ranges.map(function(r){return r.to;})) };
+    }
+    var lastFrame = 0;
+    function getCurrentFrame() {
+        for (var i=0;i<currentGroups.length;i++) {
+            var tas = currentGroups[i].targetedAnimations;
+            for (var j=0;j<tas.length;j++) {
+                var rt = tas[j].animation.runtimeAnimations && tas[j].animation.runtimeAnimations[0];
+                if (rt && isFinite(rt.currentFrame)) { lastFrame = rt.currentFrame; return lastFrame; }
+            }
+        }
+        return lastFrame;
+    }
+    var controller = {
+        hasAnimation: function(){ var r = getFrameRange(); return r.to > r.from; },
+        isPlaying: function(){ return currentGroups.some(function(g){ return g.isPlaying; }); },
+        togglePlayPause: function(){
+            if (this.isPlaying()) { currentGroups.forEach(function(g){ g.pause(); }); return false; }
+            currentGroups.forEach(function(g){ g.play(true); }); return true;
+        },
+        seekFrame: function(f){ lastFrame = f; currentGroups.forEach(function(g){ g.goToFrame(f); }); },
+        setSpeed: function(s){ speedRatio = s; currentGroups.forEach(function(g){ g.speedRatio = s; });
+            idleGroups.forEach(function(g){ g.speedRatio = s; }); },
+        getState: function(){ var r = getFrameRange();
+            return { isPlaying: this.isPlaying(), currentFrame: getCurrentFrame(),
+                     from: r.from, to: r.to, speedRatio: speedRatio, hasAnimation: r.to > r.from }; }
+    };
+
+    /* =====================================================================
+       Camera focus (port of cameraConfig focus + hand focus)
+       ===================================================================== */
+    function findBoneNodePosition(names) {
+        var lower = names.map(function(n){ return n.toLowerCase(); });
+        for (var s=0;s<scene.skeletons.length;s++) {
+            var bones = scene.skeletons[s].bones;
+            for (var b=0;b<bones.length;b++) {
+                if (lower.indexOf(bones[b].name.toLowerCase()) === -1) continue;
+                var ln = bones[b].getTransformNode && bones[b].getTransformNode();
+                if (ln) return ln.getAbsolutePosition();
+            }
+        }
+        return null;
+    }
+    function focusCameraOnAvatar() {
+        if (!cam) return;
+        var pos = findBoneNodePosition(CAMERA_CONFIG.focusBoneNames) || vec(CAMERA_CONFIG.fallbackTarget);
+        cam.setTarget(pos.add(vec(CAMERA_CONFIG.targetOffset)));
+        cam.alpha = CAMERA_CONFIG.alpha; cam.beta = CAMERA_CONFIG.beta; cam.radius = CAMERA_CONFIG.radius;
+    }
+    var trackedHand = null; // "left" | "right" | null
+    function focusHand(side, preserveOrbit) {
+        if (!cam) return false;
+        var ht = PLAYER_CONTROLS_CONFIG.handTracking;
+        var pos = findBoneNodePosition(side === "left" ? ht.leftBoneNames : ht.rightBoneNames);
+        if (!pos) return false;
+        cam.setTarget(pos);
+        if (!preserveOrbit) { cam.alpha = CAMERA_CONFIG.alpha; cam.beta = CAMERA_CONFIG.beta; cam.radius = ht.focusRadius; }
+        return true;
+    }
+    scene.onBeforeRenderObservable.add(function(){ if (trackedHand) focusHand(trackedHand, true); });
+
+    /* =====================================================================
+       Video background (OUR feature — kept; sits in front of the backdrop)
+       ===================================================================== */
     function setupVideoBackground(url) {
         if (!url) return;
         var video = document.createElement("video");
-        video.src = url;
-        video.muted = true;
-        video.crossOrigin = "anonymous";
-        video.playsInline = true;
-        video.preload = "auto";
-        // Don't autoplay — we'll drive it from the animation frame
-        video.pause();
-        bgVideo = video;
-
-        var videoTexture = new BABYLON.VideoTexture("bgVideo", video, scene, false, true);
-        videoTexture.vScale = -1;
-        videoTexture.vOffset = 1;
+        video.src = url; video.muted = true; video.crossOrigin = "anonymous";
+        video.playsInline = true; video.preload = "auto"; video.loop = true;
 
         var plane = BABYLON.MeshBuilder.CreatePlane("bgPlane", { width: 3, height: 2 }, scene);
-        plane.position = new BABYLON.Vector3(0, 1.3, 1.5);
+        plane.position = new BABYLON.Vector3(0, 1.3, 1.4);
         plane.rotation.y = Math.PI;
+        plane.isPickable = false;
 
         var mat = new BABYLON.StandardMaterial("bgMat", scene);
-        mat.diffuseTexture = videoTexture;
-        mat.emissiveTexture = videoTexture;
-        mat.backFaceCulling = false;
-        mat.disableLighting = true;
+        mat.emissiveColor = new BABYLON.Color3(1, 1, 1);   // pass the screen through as unlit
+        mat.backFaceCulling = false; mat.disableLighting = true;
+        // Dedicated image processing so the video bypasses the scene's ACES tone
+        // mapping (which darkens it) and can be brightened independently.
+        var vip = new BABYLON.ImageProcessingConfiguration();
+        vip.toneMappingEnabled = false;
+        vip.exposure = VIDEO_BRIGHTNESS;
+        mat.imageProcessingConfiguration = vip;
         plane.material = mat;
 
-        // Just keep video playing
-        video.play().catch(function() {});
+        // Loading placeholder drawn on the SAME plane until the video can play
+        // (large MKV/MP4 reference clips can take several seconds to buffer).
+        var loadTex = new BABYLON.DynamicTexture("bgLoad", { width: 768, height: 512 }, scene, false);
+        loadTex.uScale = -1; loadTex.uOffset = 1;   // counter the plane's 180° Y mirror so text reads correctly
+        mat.diffuseTexture = loadTex; mat.emissiveTexture = loadTex;
+        var done = false;
+        function bufferProgress() {
+            try {
+                if (video.duration && video.buffered.length)
+                    return Math.min(1, video.buffered.end(video.buffered.length - 1) / video.duration);
+            } catch (e) {}
+            return -1; // unknown -> indeterminate
+        }
+        function drawLoading(msg, p) {
+            var ctx = loadTex.getContext(), W = 768, H = 512;
+            ctx.fillStyle = "#15181d"; ctx.fillRect(0, 0, W, H);
+            ctx.fillStyle = "#d7dde5"; ctx.textAlign = "center";
+            ctx.font = "bold 30px sans-serif";
+            ctx.fillText(msg, W / 2, H / 2 - 34);
+            if (p > -2) {
+                var bw = W * 0.6, bh = 18, bx = (W - bw) / 2, by = H / 2;
+                ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.lineWidth = 2;
+                ctx.strokeRect(bx, by, bw, bh);
+                ctx.fillStyle = "#9fd7ff";
+                if (p >= 0) {
+                    ctx.fillRect(bx + 3, by + 3, (bw - 6) * p, bh - 6);
+                    ctx.font = "20px monospace";
+                    ctx.fillText(Math.round(p * 100) + "%", W / 2, by + 54);
+                } else {
+                    var t = (performance.now() % 1100) / 1100, sw = bw * 0.28;
+                    ctx.fillRect(bx + 3 + (bw - 6 - sw) * t, by + 3, sw, bh - 6);
+                }
+            }
+            loadTex.update();
+        }
+        var timer = setInterval(function(){ if (!done) drawLoading("Loading reference video…", bufferProgress()); }, 90);
 
-        console.log("[Video] background set up, synced to animation:", url);
+        var tex = new BABYLON.VideoTexture("bgVideo", video, scene, false, true);
+        tex.vScale = -1; tex.vOffset = 1;
+
+        function ready() {
+            if (done) return; done = true;
+            clearInterval(timer);
+            mat.diffuseTexture = tex; mat.emissiveTexture = tex;
+            loadTex.dispose();
+            console.log("[Video] playing:", url);
+        }
+        video.addEventListener("playing", ready);
+        video.addEventListener("canplaythrough", ready);
+        video.addEventListener("error", function(){
+            if (done) return; done = true; clearInterval(timer);
+            drawLoading("Reference video unavailable", -2);
+            console.warn("[Video] failed to load:", url);
+        });
+
+        video.play().catch(function(){});
+        console.log("[Video] loading:", url);
     }
 
-    function frameAvatar() {
-        var skel = scene.skeletons[0];
-        if (!skel || !cam) return;
-        var pelvis = skel.bones.find(function(b){return b.name==="pelvis";});
-        var head = skel.bones.find(function(b){return b.name==="head";});
-        if (!pelvis || !head) return;
-        var pelvisY = pelvis.getTransformNode().getAbsolutePosition().y;
-        var headY = head.getTransformNode().getAbsolutePosition().y;
-        var headX = head.getTransformNode().getAbsolutePosition().x;
-        var headZ = head.getTransformNode().getAbsolutePosition().z;
-        // Target between chest and chin, slight headroom
-        var targetY = pelvisY + (headY - pelvisY) * 0.65;
-        cam.setTarget(new BABYLON.Vector3(headX, targetY, headZ));
-        cam.radius = (headY - pelvisY) * 1.8;
-        cam.alpha = -Math.PI / 2;
-        cam.beta = Math.PI / 2.2;  // slightly above eye level
-        cam.minZ = 0.01;
-        cam.lowerRadiusLimit = 0.1;
-        console.log("[Camera] framed: targetY=" + targetY.toFixed(3) + " radius=" + cam.radius.toFixed(3));
-    }
+    /* =====================================================================
+       Playbar UI (port of AnimationPlaybar.tsx, vanilla)
+       ===================================================================== */
+    var Playbar = (function() {
+        var elPlay = document.getElementById("pbPlay");
+        var elSlider = document.getElementById("pbSlider");
+        var elFrame = document.getElementById("pbFrame");
+        var elSpeed = document.getElementById("pbSpeed");
+        var elHandL = document.getElementById("pbHandL");
+        var elHandR = document.getElementById("pbHandR");
+        var dragging = false;
 
-    async function loadAnimUrl(url) {
-        setStatus("Loading animation...");
-        var i = url.lastIndexOf("/");
-        var container;
-        try { container = await BABYLON.SceneLoader.LoadAssetContainerAsync(url.substring(0,i+1), url.substring(i+1), scene); }
-        catch(e) { console.error(e); setStatus("Failed to load"); return; }
-        var groups = container.animationGroups || [];
-        if (!groups.length) { container.dispose(); setStatus("No animations"); return; }
-        stopAll();
-        groups.forEach(function(g) { currentGroups.push(retarget(g)); });
-        container.dispose();
-        setStatus("Playing " + currentGroups.length + " group(s)");
-        playAll();
-    }
+        function refresh() {
+            var st = controller.getState();
+            elPlay.disabled = !st.hasAnimation;
+            elSlider.disabled = !st.hasAnimation;
+            elPlay.textContent = st.isPlaying ? "Pause" : "Play";
+            elSpeed.textContent = st.speedRatio + "x";
+            var maxF = (st.to > st.from) ? st.to : st.from + 1;
+            elSlider.min = st.from; elSlider.max = maxF;
+            if (!dragging) elSlider.value = st.currentFrame;
+            elFrame.textContent = st.hasAnimation
+                ? (Math.round(st.currentFrame) + " / " + Math.round(maxF)) : "No animation";
+        }
 
-    async function loadAnimFile(file) {
-        if (!file) return;
-        setStatus("Loading " + file.name + "...");
-        var container;
-        try { container = await BABYLON.SceneLoader.LoadAssetContainerAsync("file:", file, scene); }
-        catch(e) { console.error(e); setStatus("Failed"); return; }
-        var groups = container.animationGroups || [];
-        if (!groups.length) { container.dispose(); setStatus("No animations"); return; }
-        stopAll();
-        groups.forEach(function(g) { currentGroups.push(retarget(g)); });
-        container.dispose();
-        setStatus("Playing " + currentGroups.length + " group(s)");
-        playAll();
-    }
+        elPlay.onclick = function(){ if (!controller.hasAnimation()) return; controller.togglePlayPause(); refresh(); };
+        elSlider.addEventListener("input", function(){ dragging = true; controller.seekFrame(Number(elSlider.value)); refresh(); });
+        elSlider.addEventListener("change", function(){ dragging = false; });
+        elSpeed.onclick = function(){
+            var levels = PLAYER_CONTROLS_CONFIG.speedLevels;
+            var idx = levels.indexOf(controller.getState().speedRatio);
+            controller.setSpeed(levels[(idx + 1 + levels.length) % levels.length] || levels[0]);
+            refresh();
+        };
+        function toggleHand(side, el, other, otherEl) {
+            if (trackedHand === side) { trackedHand = null; el.classList.remove("active"); focusCameraOnAvatar(); return; }
+            if (focusHand(side, false)) { trackedHand = side; el.classList.add("active"); otherEl.classList.remove("active"); }
+        }
+        elHandL.onclick = function(){ toggleHand("left", elHandL, "right", elHandR); };
+        elHandR.onclick = function(){ toggleHand("right", elHandR, "left", elHandL); };
 
-    document.getElementById("skeletalFile").addEventListener("change", function(e) { if (e.target.files[0]) loadAnimFile(e.target.files[0]); });
-    window.addEventListener("keydown", function(e) {
-        if (e.key==="j"||e.key==="J") frameAvatar();
+        window.addEventListener("keydown", function(e) {
+            var tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : "";
+            if (tag === "input" || tag === "textarea" || tag === "select") return;
+            var st = controller.getState();
+            if (e.code === "Space") { e.preventDefault(); elPlay.onclick(); }
+            else if (e.code === "KeyS") { e.preventDefault(); elSpeed.onclick(); }
+            else if (e.code === "ArrowLeft") { e.preventDefault(); controller.seekFrame(st.currentFrame - PLAYER_CONTROLS_CONFIG.seekStepFrames); refresh(); }
+            else if (e.code === "ArrowRight") { e.preventDefault(); controller.seekFrame(st.currentFrame + PLAYER_CONTROLS_CONFIG.seekStepFrames); refresh(); }
+        });
+
+        setInterval(refresh, PLAYER_CONTROLS_CONFIG.pollMs);
+        return { refresh: refresh };
+    })();
+
+    /* =====================================================================
+       Backdrop color panel
+       ===================================================================== */
+    (function buildBgPanel() {
+        var panel = document.getElementById("bgPanel");
+        function apply(hex) { if (backdropMaterial) backdropMaterial.albedoColor = col(hex); }
+        BG_SWATCHES.forEach(function(hex) {
+            var s = document.createElement("div");
+            s.className = "swatch"; s.style.background = hex; s.title = hex;
+            s.onclick = function(){ apply(hex); picker.value = hex; };
+            panel.appendChild(s);
+        });
+        var picker = document.createElement("input");
+        picker.type = "color"; picker.value = "#36383b";
+        picker.oninput = function(){ apply(picker.value); };
+        panel.appendChild(picker);
+    })();
+
+    /* =====================================================================
+       Avatar picker overlay
+       ===================================================================== */
+    (function buildPicker() {
+        var overlay = document.getElementById("picker");
+        var cards = document.getElementById("pickerCards");
+        var keep = document.getElementById("keepDefault");
+        AVATAR_CONFIG.forEach(function(a) {
+            var card = document.createElement("div");
+            card.className = "avatar-card";
+            card.innerHTML = '<img src="' + a.thumbnailUrl + '" alt="' + a.name + '">' +
+                             '<div class="label">' + a.name + '</div>';
+            card.onclick = function() {
+                if (keep.checked) localStorage.setItem(AVATAR_DEFAULT_STORAGE_KEY, a.id);
+                else localStorage.removeItem(AVATAR_DEFAULT_STORAGE_KEY);
+                if (a.id === selectedAvatar.id) { overlay.classList.remove("show"); return; }
+                // Reload with the same URL params — simplest robust avatar swap.
+                localStorage.setItem(AVATAR_DEFAULT_STORAGE_KEY, a.id);
+                window.location.reload();
+            };
+            cards.appendChild(card);
+        });
+        document.getElementById("changeAvatarBtn").onclick = function(){ overlay.classList.add("show"); };
+        overlay.addEventListener("click", function(e){ if (e.target === overlay) overlay.classList.remove("show"); });
+    })();
+
+    /* =====================================================================
+       File input (manual testing)
+       ===================================================================== */
+    document.getElementById("skeletalFile").addEventListener("change", function(e) {
+        if (e.target.files[0]) loadAnim(null, e.target.files[0]);
     });
 
+    /* =====================================================================
+       Boot
+       ===================================================================== */
+    var rig = setupLighting();
     (async function() {
         try {
-            await loadAvatar();
-            frameAvatar();
+            await loadBackdrop();
+            avatarRoot = await loadAvatar(selectedAvatar);
+            avatarRoot.getChildMeshes(false).forEach(function(m){ if (m.isEnabled()) rig.addShadowCaster(m); });
+            window.avatarRoot = avatarRoot;
+
+            focusCameraOnAvatar();
             if (videoUrl) setupVideoBackground(videoUrl);
-            setStatus(animUrl ? "Loading animation..." : "Drop a .glb or use Load button. Press J to center camera.");
-            if (animUrl) await loadAnimUrl(animUrl);
-        } catch(e) { console.error("[Boot]",e); setStatus("Error: "+e.message); }
-        engine.runRenderLoop(function(){scene.render();});
+
+            await loadIdle();
+            setStatus(animUrl ? "Loading animation..." : "Drop a .glb or use Load. Press J to recenter.");
+            if (animUrl) await loadAnim(animUrl, null);
+        } catch (e) {
+            console.error("[Boot]", e); setStatus("Error: " + e.message);
+        }
+        engine.runRenderLoop(function(){ scene.render(); });
     })();
     </script>
 </body>

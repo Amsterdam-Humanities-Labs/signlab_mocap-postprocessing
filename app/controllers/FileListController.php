@@ -31,6 +31,7 @@ class FileListController {
         $searchTerm = $_GET['search'] ?? '';
         $reviewStatus = $_GET['review'] ?? 'all';
         $labelFilter = $_GET['label'] ?? 'all';
+        $mcpFilter = $_GET['mcp'] ?? 'all';
 
         // Get available dates for the dropdown
         $availableDates = $this->mocapFileModel->getAvailableDates($selectedStatus, $allowedDates);
@@ -38,25 +39,25 @@ class FileListController {
         // Get filtered files
         if ($selectedDate === 'all') {
             if ($selectedStatus === 'processed') {
-                $filesGroupedByDate = $this->mocapFileModel->getProcessedFilesGroupedByDate($limit, $page, $searchTerm, $reviewStatus, $allowedDates, $labelFilter);
-                $totalFiles = $this->mocapFileModel->getProcessedFilesCount($searchTerm, $reviewStatus, $allowedDates, $labelFilter);
+                $filesGroupedByDate = $this->mocapFileModel->getProcessedFilesGroupedByDate($limit, $page, $searchTerm, $reviewStatus, $allowedDates, $labelFilter, $mcpFilter);
+                $totalFiles = $this->mocapFileModel->getProcessedFilesCount($searchTerm, $reviewStatus, $allowedDates, $labelFilter, $mcpFilter);
             } elseif ($selectedStatus === 'all') {
-                $filesGroupedByDate = $this->mocapFileModel->getAllFilesGroupedByDate($limit, $page, $searchTerm, $allowedDates, $labelFilter);
-                $totalFiles = $this->mocapFileModel->getAllFilesCount($searchTerm, $allowedDates, $labelFilter);
+                $filesGroupedByDate = $this->mocapFileModel->getAllFilesGroupedByDate($limit, $page, $searchTerm, $allowedDates, $labelFilter, $mcpFilter);
+                $totalFiles = $this->mocapFileModel->getAllFilesCount($searchTerm, $allowedDates, $labelFilter, $mcpFilter);
             } else {
-                $filesGroupedByDate = $this->mocapFileModel->getUnprocessedFilesGroupedByDate($limit, $page, $searchTerm, $allowedDates, $labelFilter);
-                $totalFiles = $this->mocapFileModel->getUnprocessedFilesCount($searchTerm, $allowedDates, $labelFilter);
+                $filesGroupedByDate = $this->mocapFileModel->getUnprocessedFilesGroupedByDate($limit, $page, $searchTerm, $allowedDates, $labelFilter, $mcpFilter);
+                $totalFiles = $this->mocapFileModel->getUnprocessedFilesCount($searchTerm, $allowedDates, $labelFilter, $mcpFilter);
             }
         } else {
             if ($selectedStatus === 'processed') {
-                $filesGroupedByDate = $this->mocapFileModel->getProcessedFilesByDate($selectedDate, $limit, $page, $searchTerm, $labelFilter);
-                $totalFiles = $this->mocapFileModel->getProcessedFilesCountByDate($selectedDate, $searchTerm, $labelFilter);
+                $filesGroupedByDate = $this->mocapFileModel->getProcessedFilesByDate($selectedDate, $limit, $page, $searchTerm, $labelFilter, $mcpFilter);
+                $totalFiles = $this->mocapFileModel->getProcessedFilesCountByDate($selectedDate, $searchTerm, $labelFilter, $mcpFilter);
             } elseif ($selectedStatus === 'all') {
-                $filesGroupedByDate = $this->mocapFileModel->getAllFilesByDate($selectedDate, $limit, $page, $searchTerm, $labelFilter);
-                $totalFiles = $this->mocapFileModel->getAllFilesCountByDate($selectedDate, $searchTerm, $labelFilter);
+                $filesGroupedByDate = $this->mocapFileModel->getAllFilesByDate($selectedDate, $limit, $page, $searchTerm, $labelFilter, $mcpFilter);
+                $totalFiles = $this->mocapFileModel->getAllFilesCountByDate($selectedDate, $searchTerm, $labelFilter, $mcpFilter);
             } else {
-                $filesGroupedByDate = $this->mocapFileModel->getUnprocessedFilesByDate($selectedDate, $limit, $page, $searchTerm, $labelFilter);
-                $totalFiles = $this->mocapFileModel->getUnprocessedFilesCountByDate($selectedDate, $searchTerm, $labelFilter);
+                $filesGroupedByDate = $this->mocapFileModel->getUnprocessedFilesByDate($selectedDate, $limit, $page, $searchTerm, $labelFilter, $mcpFilter);
+                $totalFiles = $this->mocapFileModel->getUnprocessedFilesCountByDate($selectedDate, $searchTerm, $labelFilter, $mcpFilter);
             }
         }
 
@@ -66,25 +67,23 @@ class FileListController {
         // Calculate pagination
         $totalPages = $totalFiles > 0 ? ceil($totalFiles / $limit) : 0;
 
-        // Collect all visible file IDs for activity lookup
+        // Collect all visible file rows / IDs for lookups
+        $allFiles = [];
         $allFileIds = [];
         foreach ($filesGroupedByDate as $files) {
             foreach ($files as $f) {
+                $allFiles[] = $f;
                 $allFileIds[] = $f['id'];
             }
         }
         $fileActivities = $this->mocapFileModel->getLatestActivity($allFileIds);
         $downloadedFiles = $this->mocapFileModel->getDownloadedFileIds($allFileIds);
         $fileLabels = $this->mocapFileModel->getLabelsForFiles($allFileIds);
+        $fileGlosses = $this->mocapFileModel->getGlossesForFiles($allFileIds);
+        $fileMcpStatus = $this->mocapFileModel->getMcpStatusForFiles($allFileIds);
 
-        // Collect capture_ids for RIGHT video lookup
-        $captureIds = [];
-        foreach ($filesGroupedByDate as $files) {
-            foreach ($files as $f) {
-                if (!empty($f['capture_id'])) $captureIds[] = $f['capture_id'];
-            }
-        }
-        $rightVideos = $this->mocapFileModel->getRightVideos(array_unique($captureIds));
+        // Preview video per file: Blackmagic MP4 preferred, RIGHT MKV fallback
+        $previewVideos = $this->mocapFileModel->getPreviewVideos($allFiles);
 
         // Pass to view
         $noAssignments = ($allowedDates !== null && empty($allowedDates));
