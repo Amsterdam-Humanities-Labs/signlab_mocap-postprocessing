@@ -41,6 +41,7 @@ Capture date extracted from `vicon_files.capture_id` via `SUBSTRING_INDEX(captur
 │   ├── index.php             # File list (requires auth)
 │   ├── upload.php            # Upload handler (requires auth)
 │   ├── download.php          # Download handler (bundles FBX + MKV ZIP)
+│   ├── download-eaf.php      # Batch per-take bundle (EAF/SRT + PP FBX/GLB + reference video), capped at 100 takes
 │   ├── review-status.php     # Review status API
 │   ├── mark-processed.php    # Toggle processed status API
 │   ├── update-comment.php    # Comment save API
@@ -59,6 +60,10 @@ Capture date extracted from `vicon_files.capture_id` via `SUBSTRING_INDEX(captur
 │   │   ├── MocapFile.php     # Queries vicon_files (not mocap_files)
 │   │   ├── Assignment.php    # Capture date assignments
 │   │   └── Stats.php         # Activity statistics
+│   ├── services/
+│   │   ├── EafLocator.php    # Locates take-level .eaf/.srt files for EAF download
+│   │   ├── PathSafety.php    # Shared path sanitisation/containment trait
+│   │   └── TakeBundleLocator.php  # Locates PP FBX/GLB + reference video per take
 │   └── views/
 │       ├── file-list.php     # Main file browser with sidebar preview
 │       ├── upload-form.php   # Drag-and-drop upload
@@ -131,6 +136,7 @@ mysql -u user -p admin_gebarenoverleg < migrations/002_vicon_files_pp_columns.sq
 mysql -u user -p admin_gebarenoverleg < migrations/003_download_logs.sql
 mysql -u user -p admin_gebarenoverleg < migrations/004_extend_download_logs_actions.sql
 mysql -u user -p admin_gebarenoverleg < migrations/005_vicon_files_comment.sql
+mysql -u user -p admin_gebarenoverleg < migrations/006_download_logs_eaf_type.sql
 ```
 
 ## Important Considerations
@@ -140,3 +146,5 @@ mysql -u user -p admin_gebarenoverleg < migrations/005_vicon_files_comment.sql
 - The `.htaccess` has an exception for `babyloncc/dist/` to bypass the `public/` rewrite
 - BabylonCC uses CDN — no npm/Vite build needed. Just edit HTML and refresh.
 - Post-processed animations from Unreal have reduced rotation ranges (~3x smaller) — the compare tool compensates with per-bone amplification
+- The file list's "MCP Klaar+EAF" filter shows only takes that are workflow-complete and have a take-level annotation on disk (via `EafLocator::hasEaf()`)
+- "MCP Klaar" means `sentences.mcp_status_postprocessing = '1'` AND `sentences.mcp_status_tijd_annotatie = 'Klaar'` — see `MocapFile::isKlaar()`. Two traps: the postprocessing column stores the dropdown's *value* (`1` = Klaar, `2` = Check nodig), not the word; and `mcp_status_tijd_annotatie` is the **Gloss** field in `zinnen.html`. The separate `mcp_status_tijd_annotatie_gvg` (Gebaar voor Gebaar/Nederlands) is deliberately NOT part of the gate.

@@ -18,3 +18,9 @@ composer.phar
 
 # Log files
 *.log
+# Local tooling / artifacts
+.claude/
+.mcp.json
+.playwright-mcp/
+.superpowers/
+backups/

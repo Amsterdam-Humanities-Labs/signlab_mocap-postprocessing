@@ -28,6 +28,7 @@
             </div>
         <?php else: ?>
 
+        <?php $selectedMcp = $_GET['mcp'] ?? 'all'; ?>
         <div class="mb-6 space-y-4">
             <!-- Filter Controls -->
             <div class="bg-white rounded-lg shadow p-4">
@@ -66,6 +67,13 @@
                             <option value="znn" <?php echo $selectedLabel === 'znn' ? 'selected' : ''; ?>>ZNN</option>
                             <option value="hh"  <?php echo $selectedLabel === 'hh'  ? 'selected' : ''; ?>>HH</option>
                             <option value="sencity" <?php echo $selectedLabel === 'sencity' ? 'selected' : ''; ?>>Sencity</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">MCP Status</label>
+                        <select name="mcp" class="border border-gray-300 rounded-md px-3 py-2 text-sm">
+                            <option value="all" <?php echo $selectedMcp === 'all' ? 'selected' : ''; ?>>Alle MCP statussen</option>
+                            <option value="klaar_eaf" <?php echo $selectedMcp === 'klaar_eaf' ? 'selected' : ''; ?>>MCP Klaar + EAF beschikbaar</option>
                         </select>
                     </div>
                     <div>
@@ -108,6 +116,9 @@
                     Download Selected
                 </button>
                 <?php endif; ?>
+                <button onclick="downloadSelectedEaf()" class="bg-purple-600 hover:bg-purple-800 text-white font-bold py-2 px-4 rounded disabled:opacity-50" id="downloadEafBtn" disabled>
+                    Download Selected (EAF)
+                </button>
                 <a href="upload.php" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded inline-block">
                     Upload Processed Files
                 </a>
@@ -132,11 +143,9 @@
                             <table class="w-full">
                                 <thead>
                                     <tr class="text-left text-gray-600 text-sm">
-                                        <?php if ($selectedStatus === 'unprocessed' || $selectedStatus === 'all'): ?>
                                         <th class="pb-3">
                                             <input type="checkbox" class="date-checkbox" data-date="<?php echo $date; ?>">
                                         </th>
-                                        <?php endif; ?>
                                         <th class="pb-3">Filename</th>
                                         <?php if ($selectedStatus === 'processed' || $selectedStatus === 'all'): ?>
                                         <th class="pb-3">Processed Filename</th>
@@ -152,15 +161,17 @@
                                 <tbody>
                                     <?php foreach ($files as $file): ?>
                                         <tr class="border-t">
-                                            <?php if ($selectedStatus === 'unprocessed' || $selectedStatus === 'all'): ?>
                                             <td class="py-3">
-                                                <?php if ($file['is_pp'] == 0): ?>
                                                 <input type="checkbox" name="selected_files[]" value="<?php echo $file['id']; ?>" class="file-checkbox" data-date="<?php echo $date; ?>">
-                                                <?php endif; ?>
                                             </td>
-                                            <?php endif; ?>
                                             <td class="py-3 font-mono text-sm">
                                                 <?php echo htmlspecialchars($file['filename']); ?>
+                                                <?php if (!empty($fileGlosses[$file['id']])): ?>
+                                                    <div class="mt-1 text-indigo-700 font-semibold text-sm break-words max-w-[260px]"
+                                                         title="<?php echo htmlspecialchars($fileGlosses[$file['id']]); ?>">
+                                                        <?php echo htmlspecialchars($fileGlosses[$file['id']]); ?>
+                                                    </div>
+                                                <?php endif; ?>
                                                 <?php if (!empty($fileLabels[$file['id']])): ?>
                                                     <div class="mt-1 flex flex-wrap gap-1">
                                                         <?php foreach ($fileLabels[$file['id']] as $lbl): ?>
@@ -176,6 +187,31 @@
                                                         <?php endforeach; ?>
                                                     </div>
                                                 <?php endif; ?>
+                                                <?php
+                                                    $hasMcpEntry = array_key_exists($file['id'], $fileMcpStatus);
+                                                    $mcp = $fileMcpStatus[$file['id']] ?? ['pp' => null, 'ta' => null, 'klaar' => false];
+                                                    $ppLabel = \App\models\MocapFile::describePostprocessing($mcp['pp']);
+                                                    $taLabel = ($mcp['ta'] === null || $mcp['ta'] === '') ? 'leeg' : $mcp['ta'];
+                                                    if (!$hasMcpEntry) {
+                                                        $mcpText  = 'geen zin gekoppeld';
+                                                        $mcpClass = 'bg-orange-100 text-orange-700';
+                                                    } elseif ($mcp['klaar']) {
+                                                        $mcpText  = 'MCP Klaar';
+                                                        $mcpClass = 'bg-green-100 text-green-800';
+                                                    } else {
+                                                        $blocking = [];
+                                                        if ($mcp['pp'] !== '1') $blocking[] = 'PP';
+                                                        if ($mcp['ta'] !== 'Klaar') $blocking[] = 'TA';
+                                                        $mcpText  = implode(' + ', $blocking) . ' niet klaar';
+                                                        $mcpClass = 'bg-gray-100 text-gray-600';
+                                                    }
+                                                ?>
+                                                <div class="mt-1">
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium <?php echo $mcpClass; ?>"
+                                                          title="MCP postprocessing: <?php echo htmlspecialchars($ppLabel); ?> — MCP tijd annotatie: <?php echo htmlspecialchars($taLabel); ?>">
+                                                        <?php echo htmlspecialchars($mcpText); ?>
+                                                    </span>
+                                                </div>
                                             </td>
                                             <?php if ($selectedStatus === 'processed' || $selectedStatus === 'all'): ?>
                                             <td class="py-3 font-mono text-sm text-green-700"><?php echo htmlspecialchars($file['filename_pp'] ?? 'N/A'); ?></td>
@@ -219,6 +255,7 @@
                                                         'original' => 'downloaded',
                                                         'processed' => 'downloaded',
                                                         'bulk' => 'downloaded',
+                                                        'eaf' => 'downloaded (eaf)',
                                                         'upload' => 'uploaded',
                                                         'mark_processed' => 'processed',
                                                         'mark_unprocessed' => 'reverted',
@@ -249,10 +286,27 @@
                                             <td class="py-3">
                                                 <?php
                                                     $baseGlos = preg_replace('/\\.fbx$/i', '', $file['filename']);
-                                                    $glbUrl = !empty($file['glb_path']) ? str_replace('/web/', '/', $file['glb_path']) : '';
-                                                    $rightVideo = $rightVideos[$file['capture_id']] ?? '';
-                                                    $videoParam = $rightVideo ? '&video=' . urlencode('/gebarenoverleg_media/razerFiles/' . $rightVideo) : '';
-                                                    $previewUrl = $glbUrl ? '/animMIDI/babyloncc/dist/?anim=' . urlencode($glbUrl) . $videoParam : '';
+                                                    // glb_path points at /fbx/<name>.glb — the full glassesGuy/Mixamo
+                                                    // export, whose bone names (Hips/Spine/Neck) DON'T match the CC
+                                                    // preview avatar, so retargeting yields 0 matches and the avatar
+                                                    // sits frozen. The retargetable animation is the CC export at
+                                                    // /fbx/CC/<name>.glb. Prefer it; fall back to glb_path if absent.
+                                                    $glbDisk = !empty($file['glb_path']) ? $file['glb_path'] : '';
+                                                    $ccDisk  = $glbDisk ? preg_replace('#/fbx/(?!CC/)#', '/fbx/CC/', $glbDisk, 1) : '';
+                                                    $animDisk = ($ccDisk && is_file($ccDisk)) ? $ccDisk : $glbDisk;
+                                                    $glbUrl = $animDisk ? str_replace('/web/', '/', $animDisk) : '';
+                                                    $videoUrl = $previewVideos[$file['id']] ?? '';
+                                                    $videoParam = $videoUrl ? '&video=' . urlencode($videoUrl) : '';
+                                                    // Cache-bust on the viewer's mtime: the dist/ viewer is served
+                                                    // without a Cache-Control header, so browsers heuristically cache
+                                                    // it and the iframe can keep serving a stale build. Tying ?v= to
+                                                    // index.html's mtime forces a fresh load whenever the viewer changes.
+                                                    static $viewerVer = null;
+                                                    if ($viewerVer === null) {
+                                                        $viewerVer = @filemtime(__DIR__ . '/../../babyloncc/dist/index.html') ?: '0';
+                                                    }
+                                                    $verParam = '&v=' . $viewerVer;
+                                                    $previewUrl = $glbUrl ? '/animMIDI/babyloncc/dist/?anim=' . urlencode($glbUrl) . $videoParam . $verParam : '';
                                                 ?>
                                                 <?php if ($file['is_pp'] == 1): ?>
                                                     <a href="/animMIDI/babyloncc/dist/compare.html?file=<?php echo urlencode($baseGlos); ?>"
@@ -270,7 +324,7 @@
                                                 </button>
                                                 <?php if ($previewUrl): ?>
                                                     <br>
-                                                    <button type="button" onclick="openPreview('<?php echo $previewUrl; ?>', '<?php echo htmlspecialchars($file['filename']); ?>')" class="text-orange-600 hover:text-orange-800 text-sm bg-transparent border-0 cursor-pointer p-0">Preview Animation</button>
+                                                    <button type="button" onclick="openPreview('<?php echo $previewUrl; ?>', '<?php echo htmlspecialchars($file['filename']); ?>', <?php echo htmlspecialchars(json_encode($fileGlosses[$file['id']] ?? ''), ENT_QUOTES); ?>)" class="text-orange-600 hover:text-orange-800 text-sm bg-transparent border-0 cursor-pointer p-0">Preview Animation</button>
                                                 <?php endif; ?>
                                             </td>
                                         </tr>
@@ -288,7 +342,7 @@
             <div class="mt-6 flex justify-center">
                 <nav class="flex space-x-2">
                     <?php if ($page > 1): ?>
-                        <a href="?status=<?php echo urlencode($selectedStatus); ?>&date=<?php echo urlencode($selectedDate); ?>&limit=<?php echo $limit; ?>&page=<?php echo $page - 1; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&label=<?php echo urlencode($selectedLabel); ?>"
+                        <a href="?status=<?php echo urlencode($selectedStatus); ?>&date=<?php echo urlencode($selectedDate); ?>&limit=<?php echo $limit; ?>&page=<?php echo $page - 1; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&label=<?php echo urlencode($selectedLabel); ?>&mcp=<?php echo urlencode($selectedMcp); ?>"
                            class="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-500 hover:bg-gray-50">Previous</a>
                     <?php endif; ?>
                     <?php
@@ -298,12 +352,12 @@
                         <?php if ($i == $page): ?>
                             <span class="px-3 py-2 bg-blue-500 text-white rounded-md text-sm font-medium"><?php echo $i; ?></span>
                         <?php else: ?>
-                            <a href="?status=<?php echo urlencode($selectedStatus); ?>&date=<?php echo urlencode($selectedDate); ?>&limit=<?php echo $limit; ?>&page=<?php echo $i; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&label=<?php echo urlencode($selectedLabel); ?>"
+                            <a href="?status=<?php echo urlencode($selectedStatus); ?>&date=<?php echo urlencode($selectedDate); ?>&limit=<?php echo $limit; ?>&page=<?php echo $i; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&label=<?php echo urlencode($selectedLabel); ?>&mcp=<?php echo urlencode($selectedMcp); ?>"
                                class="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-500 hover:bg-gray-50"><?php echo $i; ?></a>
                         <?php endif; ?>
                     <?php endfor; ?>
                     <?php if ($page < $totalPages): ?>
-                        <a href="?status=<?php echo urlencode($selectedStatus); ?>&date=<?php echo urlencode($selectedDate); ?>&limit=<?php echo $limit; ?>&page=<?php echo $page + 1; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&label=<?php echo urlencode($selectedLabel); ?>"
+                        <a href="?status=<?php echo urlencode($selectedStatus); ?>&date=<?php echo urlencode($selectedDate); ?>&limit=<?php echo $limit; ?>&page=<?php echo $page + 1; ?>&search=<?php echo urlencode($_GET['search'] ?? ''); ?>&label=<?php echo urlencode($selectedLabel); ?>&mcp=<?php echo urlencode($selectedMcp); ?>"
                            class="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-500 hover:bg-gray-50">Next</a>
                     <?php endif; ?>
                 </nav>
@@ -452,8 +506,11 @@
         document.querySelectorAll('.file-checkbox').forEach(cb => cb.addEventListener('change', updateDownloadButton));
 
         function updateDownloadButton() {
+            const anyChecked = document.querySelectorAll('.file-checkbox:checked').length > 0;
             const btn = document.getElementById('downloadBtn');
-            if (btn) btn.disabled = document.querySelectorAll('.file-checkbox:checked').length === 0;
+            if (btn) btn.disabled = !anyChecked;
+            const eafBtn = document.getElementById('downloadEafBtn');
+            if (eafBtn) eafBtn.disabled = !anyChecked;
         }
 
         function downloadSelected() {
@@ -464,6 +521,11 @@
             } else {
                 window.location.href = 'download.php?bulk=' + fileIds.join(',');
             }
+        }
+        function downloadSelectedEaf() {
+            const fileIds = Array.from(document.querySelectorAll('.file-checkbox:checked')).map(cb => cb.value);
+            if (fileIds.length === 0) return;
+            window.location.href = 'download-eaf.php?bulk=' + fileIds.join(',');
         }
         function editComment(fileId, displayEl) {
             const cell = displayEl.closest('.comment-cell');
@@ -517,14 +579,15 @@
 
     <script>
     // Preview sidebar
-    function openPreview(url, filename) {
+    function openPreview(url, filename, glos) {
         const sidebar = document.getElementById('previewSidebar');
         const handle = document.getElementById('resizeHandle');
         const frame = document.getElementById('previewFrame');
         const title = document.getElementById('previewTitle');
 
         frame.src = url;
-        title.textContent = filename;
+        title.textContent = glos ? (filename + ' — ' + glos) : filename;
+        title.title = title.textContent;
         sidebar.style.display = 'flex';
         handle.style.display = 'block';
     }
