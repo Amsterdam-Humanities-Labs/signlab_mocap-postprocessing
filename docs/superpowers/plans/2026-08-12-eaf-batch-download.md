@@ -384,7 +384,7 @@ Expected: "statuses found" is greater than 0 and no more than "rows in"; "klaar"
 Cross-check the total against the design doc's figure of 670 both-Klaar takes:
 
 ```bash
-mysql -u user -pCHeZeGa85W admin_gebarenoverleg -e "
+mysql -u user -p$DB_PASSWORD admin_gebarenoverleg -e "
 SELECT COUNT(DISTINCT v.id) AS both_klaar FROM vicon_files v
 JOIN matched_transcriptions mt ON mt.m_file = CONCAT(SUBSTRING_INDEX(v.filename,'_',2), '.wav') AND LOWER(mt.zOg)='zin'
 JOIN sentences s ON s.ID = CAST(mt.m_transcription AS UNSIGNED)
@@ -429,8 +429,8 @@ ALTER TABLE download_logs
 Run:
 
 ```bash
-mysql -u user -pCHeZeGa85W admin_gebarenoverleg < migrations/006_download_logs_eaf_type.sql
-mysql -u user -pCHeZeGa85W admin_gebarenoverleg -e "SHOW COLUMNS FROM download_logs LIKE 'download_type'"
+mysql -u user -p$DB_PASSWORD admin_gebarenoverleg < migrations/006_download_logs_eaf_type.sql
+mysql -u user -p$DB_PASSWORD admin_gebarenoverleg -e "SHOW COLUMNS FROM download_logs LIKE 'download_type'"
 ```
 
 Expected: the printed enum definition includes `'eaf'`.
@@ -642,7 +642,7 @@ file_put_contents("/tmp/eaf_test.zip", $out);
 Expected listing: one directory per Klaar take containing its `.eaf` and `.srt` files, plus `SKIPPED_NOT_KLAAR.txt` naming the control ID's take with its actual statuses. No `*_backup_*.srt` entries. Confirm the log row landed:
 
 ```bash
-mysql -u user -pCHeZeGa85W admin_gebarenoverleg -e "SELECT username, filename, download_type FROM download_logs WHERE download_type='eaf' ORDER BY id DESC LIMIT 5"
+mysql -u user -p$DB_PASSWORD admin_gebarenoverleg -e "SELECT username, filename, download_type FROM download_logs WHERE download_type='eaf' ORDER BY id DESC LIMIT 5"
 ```
 
 Expected: rows with `download_type = 'eaf'` for the included takes only.
@@ -813,7 +813,7 @@ Tick two takes with a green `MCP Klaar` badge and one with a grey badge, click *
 
 Expected: a folder per green take holding its `.eaf` and `.srt` files, plus `SKIPPED_NOT_KLAAR.txt` naming only the grey take. No `*_backup_*.srt` anywhere.
 
-Then tick a green-badged take that you know has no take-level EAF (find one with: `mysql -u user -pCHeZeGa85W admin_gebarenoverleg -N -e "SELECT REPLACE(v.filename,'.fbx','') FROM vicon_files v JOIN matched_transcriptions mt ON mt.m_file = CONCAT(SUBSTRING_INDEX(v.filename,'_',2), '.wav') AND LOWER(mt.zOg)='zin' JOIN sentences s ON s.ID = CAST(mt.m_transcription AS UNSIGNED) WHERE v.subdirectory='unreal/CC' AND s.mcp_status_postprocessing='1' AND s.mcp_status_tijd_annotatie='Klaar'" | while read f; do [ -f "/web/zin/eaf/zin/$f.eaf" ] || echo "$f"; done | head -3`) and confirm it lands in `MISSING_EAF.txt`.
+Then tick a green-badged take that you know has no take-level EAF (find one with: `mysql -u user -p$DB_PASSWORD admin_gebarenoverleg -N -e "SELECT REPLACE(v.filename,'.fbx','') FROM vicon_files v JOIN matched_transcriptions mt ON mt.m_file = CONCAT(SUBSTRING_INDEX(v.filename,'_',2), '.wav') AND LOWER(mt.zOg)='zin' JOIN sentences s ON s.ID = CAST(mt.m_transcription AS UNSIGNED) WHERE v.subdirectory='unreal/CC' AND s.mcp_status_postprocessing='1' AND s.mcp_status_tijd_annotatie='Klaar'" | while read f; do [ -f "/web/zin/eaf/zin/$f.eaf" ] || echo "$f"; done | head -3`) and confirm it lands in `MISSING_EAF.txt`.
 
 - [ ] **Step 8: Commit**
 

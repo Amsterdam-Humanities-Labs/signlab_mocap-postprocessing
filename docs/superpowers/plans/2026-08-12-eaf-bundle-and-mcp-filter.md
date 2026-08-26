@@ -627,7 +627,7 @@ Expected: prints the "Too many takes selected (101)" message and exits, with no 
 Pick three both-Klaar file ids and one control id that is not Klaar:
 
 ```bash
-mysql -u user -pCHeZeGa85W admin_gebarenoverleg -N -e "
+mysql -u user -p$DB_PASSWORD admin_gebarenoverleg -N -e "
 SELECT v.id FROM vicon_files v
 JOIN matched_transcriptions mt ON mt.m_file = CONCAT(SUBSTRING_INDEX(v.filename,'_',2), '.wav') AND LOWER(mt.zOg)='zin'
 JOIN sentences s ON s.ID = CAST(mt.m_transcription AS UNSIGNED)
