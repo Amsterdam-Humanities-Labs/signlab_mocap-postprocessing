@@ -24,3 +24,6 @@ composer.phar
 .playwright-mcp/
 .superpowers/
 backups/
+
+# Per-machine storage path overrides (see paths.php)
+paths.local.php

@@ -3,6 +3,7 @@ namespace App\controllers;
 
 use App\models\MocapFile;
 use App\config\Database;
+use App\config\Paths;
 use App\services\EafLocator;
 use App\services\TakeBundleLocator;
 use PDO;
@@ -10,17 +11,14 @@ use ZipArchive;
 
 class DownloadController {
     private $mocapFileModel;
-    private $baseUrl = 'https://signcollect.nl/gebarenoverleg_media/fbx/';
-    private $processedPath = '/web/gebarenoverleg_media/fbx/post_processed/';
-    private $ccPath = '/web/gebarenoverleg_media/fbx/CC/';
-
-    private $blackmagicPath = '/web/gebarenoverleg_media/studioFiles/blackmagic_files/';
-    private $razerPath = '/mnt/bigstorage/razerFiles/';
-
-    // NOTE: "blackamgic" (m/a transposed) is the actual directory name on disk —
-    // a symlink to /mnt/bigstorage/blackmagic_filesMini/. Matching the misspelling
-    // here is deliberate; see MocapFile::getPreviewVideos() for the same pattern.
-    private $miniPath = '/web/gebarenoverleg_media/blackamgic_filesMini/';
+    // All storage locations come from paths.php (see the comments there for
+    // what each directory holds); override per machine in paths.local.php.
+    private $baseUrl;
+    private $processedPath;
+    private $ccPath;
+    private $blackmagicPath;
+    private $razerPath;
+    private $miniPath;
 
     /**
      * Hard ceiling on takes per EAF bundle. Mini MP4 coverage (0.3 MB) only
@@ -36,6 +34,12 @@ class DownloadController {
 
     public function __construct() {
         $this->mocapFileModel = new MocapFile();
+        $this->baseUrl        = Paths::get('remote_fbx_base_url');
+        $this->processedPath  = Paths::dir('fbx_processed');
+        $this->ccPath         = Paths::dir('fbx_original');
+        $this->blackmagicPath = Paths::dir('blackmagic_full');
+        $this->razerPath      = Paths::dir('razer_mkv');
+        $this->miniPath       = Paths::dir('blackmagic_mini');
     }
 
     /**
@@ -203,7 +207,7 @@ class DownloadController {
         readfile($localPath);
 
         // Only delete temp files (not local server files)
-        if ($type === 'original' && !str_starts_with($localPath, '/web/')) {
+        if ($type === 'original' && !Paths::isUnderWebRoot($localPath)) {
             unlink($localPath);
         }
         exit;
@@ -362,7 +366,8 @@ class DownloadController {
             array_map(static fn($f) => (int)$f['id'], $files)
         );
 
-        $locator = new TakeBundleLocator(new EafLocator());
+        $locator = new TakeBundleLocator(new EafLocator(Paths::dir('eaf_dir')),
+            Paths::dir('fbx_processed'), Paths::dir('blackmagic_mini'), Paths::dir('razer_mkv'));
 
         // One query for every capture's RIGHT-MKV fallback, rather than one per take.
         $captureIds = array_values(array_unique(array_map(
@@ -463,7 +468,7 @@ class DownloadController {
             $zip->addFromString(
                 'MISSING_EAF.txt',
                 "These takes have no files in this ZIP. Either no take-level .eaf was found\n"
-                . "in /web/zin/eaf/zin/, or (see the note on the line, if present) a file could\n"
+                . "in " . Paths::dir('eaf_dir') . ", or (see the note on the line, if present) a file could\n"
                 . "not be added while the ZIP was being built.\n"
                 . "(The broadcast-level .eaf is not used as a fallback: it covers the whole\n"
                 . "broadcast and is not time-aligned to an individual take.)\n\n"

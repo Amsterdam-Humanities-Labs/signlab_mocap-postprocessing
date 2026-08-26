@@ -36,7 +36,7 @@ Web application for managing motion capture animation files from the signCollect
 
 ## Setup
 
-1. Clone the repository (it must live at `/web/animMIDI` — see *Portability*):
+1. Clone the repository:
    ```bash
    git clone git@github.com:Amsterdam-Humanities-Labs/signlab_sC-Animation-PP.git /web/animMIDI
    cd /web/animMIDI
@@ -47,7 +47,7 @@ Web application for managing motion capture animation files from the signCollect
    composer install
    ```
 
-3. Create the database config (`mysql_config.php` is gitignored):
+3. Create the database config (`mysql_config.php` is gitignored) and, if your storage layout differs from production, `cp paths.local.php.example paths.local.php` and edit it:
    ```php
    <?php
    $servername = "localhost";
@@ -84,7 +84,7 @@ This app is **not self-contained**. It is one module of the signCollect deployme
 
 **Authentication**: there is no login page here. `app/auth.php` reads the `sessionObject` cookie set by the signCollect portal login on the same domain. Without that portal, every page redirects/401s.
 
-**File storage paths** (hardcoded in `app/controllers/*`, `app/services/*`, `app/models/MocapFile.php`):
+**File storage paths** — configured in `paths.php` (each key is documented there); override per machine by copying `paths.local.php.example` to `paths.local.php`. Defaults:
 
 | Type | Path |
 |---|---|
@@ -95,17 +95,17 @@ This app is **not self-contained**. It is one module of the signCollect deployme
 | Camera recordings (MKV) | `/mnt/bigstorage/razerFiles/` |
 | EAF annotation files | `/web/zin/eaf/zin/` (from the `zin` project) |
 
-Preview URLs are derived by stripping the `/web/` prefix from disk paths, so `/web` must be the web root.
+Preview URLs are derived by stripping `web_root` from disk paths, so media that the browser fetches must live below `web_root`.
 
 ## Portability
 
 Running this on another machine works only if it reproduces the production layout:
 
-- Cloned to **exactly** `/web/animMIDI` with `/web` as the Apache document root (`/animMIDI/` URL prefix and `/web/` path stripping are hardcoded).
-- The media directories above exist (or are symlinked) at the same absolute paths.
+- Served under the `/animMIDI/` URL prefix (still assumed by `.htaccess` and the viewer links).
+- The media directories exist somewhere — set their locations in `paths.local.php`; browser-fetched ones (GLBs, preview MP4s) must be below `web_root`.
 - The full signCollect MySQL database is available, plus the signCollect portal for the login cookie.
 
-For a standalone dev setup you would need to: (a) create the external tables (no schema is shipped for them — dump them from production), (b) fake the `sessionObject` cookie or stub `requireAuth()`, and (c) point the path constants at local directories. Making the paths configurable via `mysql_config.php`/env is the obvious next refactor.
+For a standalone dev setup you would still need to: (a) create the external tables (no schema is shipped for them — dump them from production), and (b) fake the `sessionObject` cookie or stub `requireAuth()`.
 
 ## BabylonCC 3D Viewer
 

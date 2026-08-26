@@ -294,7 +294,7 @@
                                                     $glbDisk = !empty($file['glb_path']) ? $file['glb_path'] : '';
                                                     $ccDisk  = $glbDisk ? preg_replace('#/fbx/(?!CC/)#', '/fbx/CC/', $glbDisk, 1) : '';
                                                     $animDisk = ($ccDisk && is_file($ccDisk)) ? $ccDisk : $glbDisk;
-                                                    $glbUrl = $animDisk ? str_replace('/web/', '/', $animDisk) : '';
+                                                    $glbUrl = $animDisk ? \App\config\Paths::toUrl($animDisk) : '';
                                                     $videoUrl = $previewVideos[$file['id']] ?? '';
                                                     $videoParam = $videoUrl ? '&video=' . urlencode($videoUrl) : '';
                                                     // Cache-bust on the viewer's mtime: the dist/ viewer is served
