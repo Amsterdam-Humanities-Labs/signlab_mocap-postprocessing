@@ -1,4 +1,9 @@
 <?php
+
+// signcollect-lib's install-root resolver: sc_path(), sc_dir(), sc_root().
+// Vendored shim - it finds /web/lib/paths.php, or falls back to /web.
+require_once __DIR__ . '/sc_paths.php';
+
 /**
  * Storage path configuration for the Animation Post-Processing Manager.
  *
@@ -21,7 +26,7 @@ return [
      * viewer's ?anim= parameter), so anything the browser must fetch — GLBs,
      * preview MP4s — has to live (or be symlinked) below it.
      */
-    'web_root' => '/web',
+    'web_root' => sc_root(),
 
     /*
      * Original motion-capture exports from the signCollect pipeline, as FBX and
@@ -31,7 +36,7 @@ return [
      * is missing here it is fetched from `remote_fbx_base_url` instead.
      * Web-served (GLBs are loaded by the browser).
      */
-    'fbx_original' => '/web/gebarenoverleg_media/fbx/CC/',
+    'fbx_original' => sc_dir('media_fbx', 'CC'),
 
     /*
      * Post-processed animations uploaded back by the engineers (Unreal export),
@@ -41,14 +46,14 @@ return [
      * the compare viewer (original vs post-processed).
      * Web-served.
      */
-    'fbx_processed' => '/web/gebarenoverleg_media/fbx/post_processed/',
+    'fbx_processed' => sc_dir('media_fbx', 'post_processed'),
 
     /*
      * Full-resolution Blackmagic studio recordings, one sub-folder per capture
      * date (YYYY-MM-DD/<take>.mp4). Last-resort video source when neither the
      * mini MP4 nor the Razer MKV exists for a take.
      */
-    'blackmagic_full' => '/web/gebarenoverleg_media/studioFiles/blackmagic_files/',
+    'blackmagic_full' => sc_dir('media', 'studioFiles/blackmagic_files'),
 
     /*
      * Downscaled (~0.3 MB) preview MP4s of the Blackmagic recordings, same
@@ -61,7 +66,7 @@ return [
      * "correct" the spelling or every lookup silently fails.
      * Web-served (the preview sidebar streams it).
      */
-    'blackmagic_mini' => '/web/gebarenoverleg_media/blackamgic_filesMini/',
+    'blackmagic_mini' => sc_dir('media', 'blackamgic_filesMini'),
 
     /*
      * Raw Razer camera recordings (MKV, ~8.6 MB per take), flat directory,
@@ -83,7 +88,7 @@ return [
      * the batch EAF/SRT download. A take without an .eaf here is reported as
      * missing in the download's README rather than silently skipped.
      */
-    'eaf_dir' => '/web/zin/eaf/zin/',
+    'eaf_dir' => sc_dir('zin/eaf/zin'),
 
     /*
      * Public base URL of the original FBX files. Only used as a fallback when a
