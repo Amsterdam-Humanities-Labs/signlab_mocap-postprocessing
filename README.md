@@ -36,7 +36,7 @@ On the demo hosts the docroot is not always `/web`, so every filesystem path is 
 - **Backend**: PHP 7.4+ with PDO, MVC pattern (`app/controllers`, `app/models`, `app/services`, `app/views`)
 - **Frontend**: Tailwind CSS (CDN), vanilla JavaScript
 - **Database**: MySQL (`admin_gebarenoverleg`) — shared with the signCollect suite
-- **3D Viewer**: `babyloncc/` — Vite + TypeScript + BabylonJS app; the built output in `babyloncc/dist/` is committed and served directly
+- **3D Viewer**: `babyloncc/dist/` — two hand-written BabylonJS pages (CDN, no build step) served directly. `babyloncc/src/` is an unrelated Vite + React app that nothing links to.
 - **Data Source**: `vicon_files` table (subdirectory `unreal/CC`)
 
 ## Requirements
@@ -45,12 +45,12 @@ On the demo hosts the docroot is not always `/web`, so every filesystem path is 
 - MySQL 5.7+ with the signCollect `admin_gebarenoverleg` database (see *External dependencies* below)
 - Apache with mod_rewrite (the app expects to be mounted at `/animMIDI/`)
 - Composer (for `dump-autoload`; there are no packages to fetch)
-- Node.js 18+ (only if you rebuild the BabylonCC viewer)
+- Node.js is not needed. The served viewer has no build step; see *BabylonCC 3D Viewer*
 - Modern browser with WebGL2 support
 
 ## Size and how to clone
 
-A full clone is about **146 MB** (42 MB of it packed history), and essentially all of it is `babyloncc/` — the committed viewer build. The single biggest file is `babyloncc/dist/PalmerPolo1024uastc.glb` at 34 MB; `Palmer_optimized_ktx2.glb` (13 MB) exists in three copies, `glassesGuySignLab.glb` is 11 MB, and the bundled Babylon build is 8 MB. That is a deliberate trade: `dist/` is committed so the server needs no Node toolchain.
+A full clone is about **120 MB**, and essentially all of it is `babyloncc/`'s avatars. The single biggest file is `babyloncc/dist/PalmerPolo1024uastc.glb` at 34 MB; `glassesGuySignLab.glb` is 11 MB and `Palmer_optimized_ktx2.glb` (13 MB) exists twice, in `dist/` (served) and `public/` (the Vite app's build input). That is a deliberate trade: the avatars are committed so the server needs no asset pipeline. A third copy of `Palmer_optimized_ktx2.glb` at `babyloncc/`, the 11 MB `dist/assets/` React bundle and the 2 MB `dist/studio.envbin` were removed in 2026-09: nothing referenced any of them, and `.htaccess` rewrites everything outside `babyloncc/dist/` to `/public/`, so the root copy was not even reachable over HTTP.
 
 Clone it normally — the deploy needs the whole tree, and the avatars in `dist/` are load-bearing for other components (see *External dependencies*). If you only want to read the PHP:
 
@@ -161,19 +161,20 @@ For a standalone dev setup you would still need to: (a) create the external tabl
 
 ## BabylonCC 3D Viewer
 
-Source lives in `babyloncc/src/` (Vite + TypeScript + BabylonJS). The compiled app in `babyloncc/dist/` is committed so the server needs no Node toolchain.
+What is served from `babyloncc/dist/` is two hand-written pages, not a compiled app. `babyloncc/src/` holds a Vite + TypeScript + React viewer that is not what `dist/index.html` runs — see *To change the viewer* below before touching either.
 
 - **Preview**: `/animMIDI/babyloncc/dist/?anim=/path/to/animation.glb`
 - **Compare**: `/animMIDI/babyloncc/dist/compare.html?file=M20260126_1880_260319_1`
 
-To change the viewer:
-```bash
-cd babyloncc
-npm install
-npm run dev      # local dev server
-npm run build    # regenerates dist/ — commit the result
-```
-`compare.html` in `dist/` is a hand-written standalone page (BabylonJS via CDN), not a Vite build output.
+To change the viewer, edit `babyloncc/dist/index.html` or `babyloncc/dist/compare.html` directly.
+Both are hand-written standalone pages that load BabylonJS from
+`cdn.babylonjs.com`; neither is a Vite build output, and there is no build step
+between the repository and what the server sends.
+
+**Do not run `npm run build`.** `babyloncc/src/` is a separate Vite + React app
+that no page links to, and a build writes its own `index.html` into `dist/` —
+on top of the viewer. Its last build output was removed in 2026-09 for the same
+reason: nothing loaded it.
 
 ### Retargeting: unit conventions
 
