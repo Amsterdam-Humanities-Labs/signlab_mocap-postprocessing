@@ -16,9 +16,8 @@ app/controllers/   FileList · Upload · Download · Delegate · Stats
 app/models/        MocapFile (vicon_files queries) · Assignment · Stats
 app/services/      EafLocator · TakeBundleLocator · PathSafety trait — filesystem-only, fixture-tested
 app/views/         file-list · upload-form/result · delegate · stats · partials/header
-babyloncc/src/     Vite + TypeScript viewer source
-babyloncc/dist/    the served viewer (.htaccess exception). index.html and
-                   compare.html are hand-written, NOT Vite output - see Rules
+babyloncc/dist/    the served viewer (.htaccess exception); index.html and
+                   compare.html are hand-written, no build step
 migrations/        numbered SQL, applied in order
 tests/             PHPUnit (php vendor/bin/phpunit)
 paths.php          all storage locations, documented per key; override in paths.local.php
@@ -32,15 +31,10 @@ paths.php          all storage locations, documented per key; override in paths.
 - **Never put credentials in tracked files** — not in docs, not in example commands. Use `$DB_PASSWORD` in examples. `mysql_config.php` and `paths.local.php` are gitignored.
 - Every filename that reaches the filesystem goes through `PathSafety::safeName()` + `isWithin()`; DB-sourced names are still untrusted.
 - Auth is the portal's `sessionObject` cookie (`userId`, `username`, `role`, `expiresAt`). Admins are hardcoded in `app/auth.php`. Non-admins only see dates assigned to them in `capture_assignments`; enforce in the query, not the view.
-- **Do not run `npm run build` and commit `dist/`.** Both pages that are actually
-  served - `dist/index.html` and `dist/compare.html` - are hand-written, load
-  BabylonJS from `cdn.babylonjs.com`, and have been edited by hand for five
-  commits. A Vite build emits its own `index.html` into `dist/` and would
-  overwrite the live viewer with the React app in `src/`, which nothing links
-  to. That React app's last build output (`dist/assets/`, 11 MB) was removed in
-  2026-09 because no page referenced it. Edit `dist/*.html` directly; if you
-  ever do revive the Vite app, build it somewhere that is not on top of the
-  viewer. GLBs in `dist/` need mode 644.
+- **Edit `babyloncc/dist/*.html` directly.** They are hand-written and load
+  BabylonJS from `cdn.babylonjs.com`; there is no build step (the unused Vite
+  app that used to sit next to `dist/` was removed in 2026-09). GLBs in `dist/`
+  need mode 644.
 - The `/animMIDI/` URL prefix is assumed by `.htaccess` and the viewer links in `file-list.php`.
 
 ## Database
