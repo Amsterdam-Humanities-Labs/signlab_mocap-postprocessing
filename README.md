@@ -6,7 +6,7 @@ A PHP/MySQL app for mocap post-processing. Engineers download FBX recordings, cl
 - Download an FBX, or a ZIP with the FBX and the MKV reference video. Download the EAF/SRT files of many recordings at once (MCP Klaar only, at most 100).
 - Upload processed FBX files (drag and drop, or a ZIP). Mark recordings as correct, add comments, assign dates to users, and view statistics.
 - `babyloncc/dist/` holds a 3D preview and an original-versus-processed comparison. These are hand-written BabylonJS pages without a build step.
-- Data comes from `vicon_files WHERE subdirectory = 'unreal/CC'`. `CLAUDE.md` and `docs/decisions/` list the conventions and pitfalls.
+- Data comes from `vicon_files WHERE subdirectory = 'unreal/CC'`. `CLAUDE.md` lists the conventions and pitfalls.
 
 ## Where it runs
 | Host | Path | URL |
