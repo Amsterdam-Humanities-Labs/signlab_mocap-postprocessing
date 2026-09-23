@@ -1,4 +1,4 @@
-# signlab_sC-Animation-PP
+# signlab_mocap-postprocessing
 A PHP/MySQL app for mocap post-processing. Engineers download FBX recordings, clean them up in Unreal, and upload them again.
 
 ## What it does
@@ -38,5 +38,5 @@ Viewer: `/animMIDI/babyloncc/dist/?anim=<glb>`. Comparison: `/animMIDI/babyloncc
 - MySQL `admin_gebarenoverleg`: reads `vicon_files`, `sentences`, `matched_transcriptions`, `users`, `form_data`, `labels`, `_pp_*` and `_all_sent`.
   Writes `vicon_files` (`is_pp`, `review_status`, `comment`), `sentences.mcp_status_postprocessing`, and its own tables `capture_assignments` and `download_logs` (see `migrations/`).
 - [signlab_signCollect-v2](https://github.com/Amsterdam-Humanities-Labs/signlab_signCollect-v2) sets the `sessionObject` login cookie. [signlab_signcollect-lib](https://github.com/Amsterdam-Humanities-Labs/signlab_signcollect-lib) provides the path resolver at `<root>/lib`.
-- [signlab_zin](https://github.com/Amsterdam-Humanities-Labs/signlab_zin) makes the EAF/SRT files in `eaf_dir`.
+- [signlab_zinnen-annotation](https://github.com/Amsterdam-Humanities-Labs/signlab_zinnen-annotation) makes the EAF/SRT files in `eaf_dir`.
 - [signlab_annotation-editors](https://github.com/Amsterdam-Humanities-Labs/signlab_annotation-editors) loads `/animMIDI/babyloncc/dist/PalmerPolo1024uastc.glb` and `environment.envbin`, so keep `dist/`.
